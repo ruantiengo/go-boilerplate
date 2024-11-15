@@ -99,6 +99,11 @@ func (ns NullTransactionStatus) Value() (driver.Value, error) {
 	return string(ns.TransactionStatus), nil
 }
 
+type SchemaMigration struct {
+	Version int64
+	Dirty   bool
+}
+
 type Transaction struct {
 	BankSlipUuid  uuid.UUID
 	Status        NullTransactionStatus

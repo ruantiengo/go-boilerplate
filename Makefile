@@ -1,30 +1,32 @@
 # Variáveis
-ENV_FILE=".env"
+ENV_FILE := .env
 
 # Verificar se o arquivo existe
-if [[ ! -f "$ENV_FILE" ]]; then
-  echo "Arquivo $ENV_FILE não encontrado."
-  exit 1
-fi
+ifeq ($(wildcard $(ENV_FILE)),)
+    $(error Arquivo $(ENV_FILE) não encontrado.)
+endif
 
 # Extrair variáveis do arquivo
-POSTGRES_HOST=$(grep -oP '^POSTGRES_HOST=\K.*' "$ENV_FILE")
-POSTGRES_PORT=$(grep -oP '^POSTGRES_PORT=\K.*' "$ENV_FILE")
-POSTGRES_DB=$(grep -oP '^POSTGRES_DB=\K.*' "$ENV_FILE")
-POSTGRES_USER=$(grep -oP '^POSTGRES_USER=\K.*' "$ENV_FILE")
-POSTGRES_PASSWORD=$(grep -oP '^POSTGRES_PASSWORD=\K.*' "$ENV_FILE")
+POSTGRES_HOST := $(shell grep -oP '^POSTGRES_HOST=\K.*' $(ENV_FILE))
+POSTGRES_PORT := $(shell grep -oP '^POSTGRES_PORT=\K.*' $(ENV_FILE))
+POSTGRES_DB := $(shell grep -oP '^POSTGRES_DB=\K.*' $(ENV_FILE))
+POSTGRES_USER := $(shell grep -oP '^POSTGRES_USER=\K.*' $(ENV_FILE))
+POSTGRES_PASSWORD := $(shell grep -oP '^POSTGRES_PASSWORD=\K.*' $(ENV_FILE))
 
 # Construir a URL do PostgreSQL
-POSTGRES_URL="postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}"
+DB_URL := postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@$(POSTGRES_HOST):$(POSTGRES_PORT)/$(POSTGRES_DB)?sslmode=disable
 
-MIGRATIONS_DIR=./database/migrations
-SCHEMA_FILE=./database/schema.sql
-QUERIES_DIR=./database/queries
-SQLC_CONFIG=./sqlc.yaml
+# Diretórios
+SCHEMA_FILE := ./database/schema.sql
+
+MIGRATIONS_DIR := ./database/migrations
+SCHEMA_FILE := ./database/schema.sql
+QUERIES_DIR := ./database/queries
+SQLC_CONFIG := ./sqlc.yaml
 
 # Binários
-MIGRATE_BIN=$(shell which migrate)
-SQLC_BIN=$(shell which sqlc)
+MIGRATE_BIN := $(shell which migrate)
+SQLC_BIN := $(shell which sqlc)
 
 # Targets
 
@@ -41,7 +43,7 @@ help:
 # Migrações
 .PHONY: migrate-up
 migrate-up:
-ifndef MIGRATE_BIN
+ifeq ($(MIGRATE_BIN),)
 	$(error "migrate não encontrado. Instale com 'go install github.com/golang-migrate/migrate/v4/cmd/migrate@latest'")
 endif
 	$(MIGRATE_BIN) -database "$(DB_URL)" -path $(MIGRATIONS_DIR) up
@@ -60,12 +62,12 @@ endif
 # Dump do esquema do banco
 .PHONY: schema-dump
 schema-dump:
-	pg_dump -s -U user -d dbname > $(SCHEMA_FILE)
+	PGPASSWORD=$(POSTGRES_PASSWORD) pg_dump -s $(DB_URL) > $(SCHEMA_FILE)
 
 # Geração de código com sqlc
 .PHONY: sqlc-generate
 sqlc-generate:
-ifndef SQLC_BIN
+ifeq ($(SQLC_BIN),)
 	$(error "sqlc não encontrado. Instale com 'go install github.com/kyleconroy/sqlc/cmd/sqlc@latest'")
 endif
 	$(SQLC_BIN) generate
