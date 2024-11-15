@@ -2,34 +2,34 @@ package infra
 
 import (
 	"context"
+	"database/sql"
 	db "ruantiengo/database/generated"
 	"ruantiengo/internal/transaction/domain"
 	"ruantiengo/internal/transaction/repository"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type postgresTransactionRepository struct {
 	queries *db.Queries
 }
 
-func NewPostgresTransactionRepository(dbPool *pgxpool.Pool) repository.TransactionRepository {
+func NewPostgresTransactionRepository(sqlDB *sql.DB) repository.TransactionRepository {
 	return &postgresTransactionRepository{
-		queries: db.New(dbPool),
+		queries: db.New(sqlDB),
 	}
 }
 
 func (r *postgresTransactionRepository) Save(ctx context.Context, transaction domain.Transaction) error {
 	params := db.CreateTransactionParams{
 		BankSlipUuid:  transaction.BankSlipUuid,
-		Status:        db.TransactionStatus(transaction.Status),
+		Status:        db.NullTransactionStatus{Valid: true, TransactionStatus: db.TransactionStatus(transaction.Status)},
 		CreatedAt:     transaction.CreatedAt,
 		UpdatedAt:     transaction.UpdatedAt,
-		PaymentMethod: db.PaymentMethod(transaction.PaymentMethod),
+		PaymentMethod: db.NullPaymentMethod{Valid: true, PaymentMethod: db.PaymentMethod(transaction.PaymentMethod)},
 	}
 
-	_, err := r.queries.CreateTransaction(ctx, params)
+	err := r.queries.CreateTransaction(ctx, params)
 	return err
 }
 
@@ -45,10 +45,15 @@ func (r *postgresTransactionRepository) GetByBankSlipUuid(ctx context.Context, b
 	}
 
 	return domain.Transaction{
-		BankSlipUuid:  dbTransaction.BankSlipUuid,
-		Status:        domain.TransactionStatus(dbTransaction.Status),
-		CreatedAt:     dbTransaction.CreatedAt,
-		UpdatedAt:     dbTransaction.UpdatedAt,
-		PaymentMethod: domain.PaymentMethod(dbTransaction.PaymentMethod),
+		BankSlipUuid: dbTransaction.BankSlipUuid,
+		Status:       domain.TransactionStatus(dbTransaction.Status.TransactionStatus),
+		CreatedAt:    dbTransaction.CreatedAt,
+		UpdatedAt:    dbTransaction.UpdatedAt,
+		PaymentMethod: func() domain.PaymentMethod {
+			if dbTransaction.PaymentMethod.Valid {
+				return domain.PaymentMethod(dbTransaction.PaymentMethod.PaymentMethod)
+			}
+			return domain.PaymentMethod("")
+		}(),
 	}, nil
 }

@@ -37,17 +37,16 @@ func NewRabbitMQManager(config *RabbitMQConfig) *RabbitMQManager {
 }
 
 func (m *RabbitMQManager) Connect() error {
-	conn, err := amqp.Dial(m.Config.ConnectionString())
+	var err error
+	m.Conn, err = amqp.Dial(m.Config.ConnectionString())
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to connect to RabbitMQ: %v", err)
 	}
-	m.Conn = conn
 
-	ch, err := conn.Channel()
+	m.Ch, err = m.Conn.Channel()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to open a channel: %v", err)
 	}
-	m.Ch = ch
 
 	go m.handleReconnect()
 
@@ -58,23 +57,30 @@ func (m *RabbitMQManager) handleReconnect() {
 	for {
 		reason, ok := <-m.Conn.NotifyClose(make(chan *amqp.Error))
 		if !ok {
-			logger.Message(logger.Warning, "Conexão com RabbitMQ foi fechada. Tentando reconectar...")
+			logger.Message(logger.Warning, "RabbitMQ connection closed. Attempting to reconnect...")
 			break
 		}
-		logger.Message(logger.Error, "Conexão com RabbitMQ perdida. Razão: %v", reason)
+		logger.Message(logger.Error, "RabbitMQ connection closed. Reason: %v", reason)
 
 		for {
-			time.Sleep(3 * time.Second)
+			time.Sleep(5 * time.Second)
 
 			err := m.Connect()
 			if err == nil {
-				logger.Message(logger.Info, "Reconectado ao RabbitMQ com sucesso")
+				logger.Message(logger.Info, "Successfully reconnected to RabbitMQ")
 				break
 			}
 
-			logger.Message(logger.Error, "Falha ao reconectar com RabbitMQ: %v", err)
+			logger.Message(logger.Error, "Failed to reconnect to RabbitMQ: %v", err)
 		}
 	}
+}
+
+func (m *RabbitMQManager) GetChannel() (*amqp.Channel, error) {
+	if m.Ch == nil {
+		return nil, fmt.Errorf("RabbitMQ channel is not initialized")
+	}
+	return m.Ch, nil
 }
 
 func (m *RabbitMQManager) Close() {
@@ -84,8 +90,4 @@ func (m *RabbitMQManager) Close() {
 	if m.Conn != nil {
 		m.Conn.Close()
 	}
-}
-
-func (m *RabbitMQManager) GetChannel() *amqp.Channel {
-	return m.Ch
 }
