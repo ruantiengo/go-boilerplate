@@ -27,6 +27,8 @@ func CheckVariables() {
 		"DEBUG_MODE",
 
 		"RABBITMQ_URI",
+
+		"API_PORT",
 	}
 
 	missingVars := []string{}

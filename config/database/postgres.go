@@ -1,4 +1,4 @@
-package config
+package postgres_config
 
 import (
 	"database/sql"

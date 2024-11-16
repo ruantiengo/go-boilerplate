@@ -1,4 +1,4 @@
-package config
+package rabbit_config
 
 import (
 	"fmt"
