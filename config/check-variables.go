@@ -3,7 +3,7 @@ package config
 import (
 	"log"
 	"os"
-	logger "ruantiengo/log"
+	logger "ruantiengo/config/log"
 
 	"github.com/joho/godotenv"
 )

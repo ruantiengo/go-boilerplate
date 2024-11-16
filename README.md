@@ -6,6 +6,10 @@ Este é um boilerplate para projetos em Go, seguindo os princípios da Clean Arc
 - **sqlc**: Ferramenta para gerar código Go a partir de consultas SQL. [Instalação](https://docs.sqlc.dev/en/latest/overview/install.html)
 - **migrate**: Ferramenta para gerenciar migrações de banco de dados. [Instalação](https://github.com/golang-migrate/migrate/tree/master/cmd/migrate)
 - **postgres 17**: Banco de dados relacional utilizado no projeto. [Instalação](https://www.postgresql.org/download/)
+- **air**: Ferramenta para live reloading de aplicações Go. [Instalação](https://github.com/cosmtrek/air)
+      ```sh
+      go install github.com/cosmtrek/air@latest
+      ```
 
 ## Estrutura de Pastas
 

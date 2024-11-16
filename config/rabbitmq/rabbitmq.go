@@ -5,7 +5,7 @@ import (
 	"os"
 	"time"
 
-	logger "ruantiengo/log"
+	logger "ruantiengo/config/log"
 
 	"github.com/streadway/amqp"
 )

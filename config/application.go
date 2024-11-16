@@ -4,10 +4,10 @@ import (
 	"database/sql"
 	postgres_config "ruantiengo/config/database"
 	server_config "ruantiengo/config/gim"
+	logger "ruantiengo/config/log"
 	rabbit_config "ruantiengo/config/rabbitmq"
 	"ruantiengo/internal/transaction/infra"
 	usecase "ruantiengo/internal/transaction/usecases"
-	logger "ruantiengo/log"
 
 	"github.com/gin-gonic/gin"
 )

@@ -4,8 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
-
-	logger "ruantiengo/log"
+	logger "ruantiengo/config/log"
 
 	_ "github.com/lib/pq"
 )

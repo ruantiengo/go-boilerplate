@@ -8,7 +8,7 @@ import (
 	"syscall"
 	"time"
 
-	logger "ruantiengo/log"
+	logger "ruantiengo/config/log"
 
 	"github.com/gin-gonic/gin"
 )

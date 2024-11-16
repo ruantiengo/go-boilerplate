@@ -39,6 +39,17 @@ help:
 	@echo "  make schema-dump         - Gera o schema.sql do banco de dados"
 	@echo "  make sqlc-generate       - Gera código Go a partir das queries SQL"
 	@echo "  make setup               - Executa setup completo (migração e geração de código)"
+	@echo "  make test                - Executa todos os testes"
+	@echo "  make test-coverage       - Executa todos os testes e gera relatório de cobertura"
+	@echo "  make test-package PACKAGE=<package_path> - Executa testes para um pacote específico"
+	@echo "  make clean               - Remove artefatos de teste"
+	@echo "  make dev                 - Executa o desenvolvimento com watch"
+
+# Desenvolvimento com watch
+.PHONY: dev
+dev:
+	@echo "Iniciando o desenvolvimento com watch..."
+	air -log.silent true 
 
 # Migrações
 .PHONY: migrate-up
@@ -76,3 +87,25 @@ endif
 .PHONY: setup
 setup: migrate-up schema-dump sqlc-generate
 	@echo "Setup completo realizado com sucesso!"
+
+# Testes
+.PHONY: test
+test:
+	go test $(shell go list ./... | grep -v /postgres-data) -v
+
+.PHONY: test-coverage
+test-coverage:
+	go test $(shell go list ./... | grep -v /postgres-data) -coverprofile=coverage.out
+	go tool cover -html=coverage.out -o coverage.html
+
+.PHONY: test-package
+test-package:
+	@if [ -z "$(PACKAGE)" ]; then \
+		echo "Usage: make test-package PACKAGE=<package_path>"; \
+		exit 1; \
+	fi
+	go test $(PACKAGE) -v
+
+.PHONY: clean
+clean:
+	rm -f coverage.out coverage.html
