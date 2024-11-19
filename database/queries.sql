@@ -28,3 +28,13 @@ WHERE bank_slip_uuid = $1;
 -- name: GetAllTransactions :many
 SELECT bank_slip_uuid, status, created_at, updated_at, payment_method
 FROM Transaction;
+
+-- name: UpsertTransaction :one
+INSERT INTO Transaction (bank_slip_uuid, status, created_at, updated_at, payment_method)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (bank_slip_uuid) DO UPDATE
+SET
+    status = EXCLUDED.status,
+    updated_at = EXCLUDED.updated_at,
+    payment_method = EXCLUDED.payment_method
+RETURNING bank_slip_uuid, status, created_at, updated_at, payment_method;

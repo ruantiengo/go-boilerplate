@@ -144,3 +144,41 @@ func (q *Queries) UpdateTransactionStatus(ctx context.Context, arg UpdateTransac
 	_, err := q.db.ExecContext(ctx, updateTransactionStatus, arg.Status, arg.UpdatedAt, arg.BankSlipUuid)
 	return err
 }
+
+const upsertTransaction = `-- name: UpsertTransaction :one
+INSERT INTO Transaction (bank_slip_uuid, status, created_at, updated_at, payment_method)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (bank_slip_uuid) DO UPDATE
+SET
+    status = EXCLUDED.status,
+    updated_at = EXCLUDED.updated_at,
+    payment_method = EXCLUDED.payment_method
+RETURNING bank_slip_uuid, status, created_at, updated_at, payment_method
+`
+
+type UpsertTransactionParams struct {
+	BankSlipUuid  uuid.UUID
+	Status        NullTransactionStatus
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+	PaymentMethod NullPaymentMethod
+}
+
+func (q *Queries) UpsertTransaction(ctx context.Context, arg UpsertTransactionParams) (Transaction, error) {
+	row := q.db.QueryRowContext(ctx, upsertTransaction,
+		arg.BankSlipUuid,
+		arg.Status,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+		arg.PaymentMethod,
+	)
+	var i Transaction
+	err := row.Scan(
+		&i.BankSlipUuid,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.PaymentMethod,
+	)
+	return i, err
+}

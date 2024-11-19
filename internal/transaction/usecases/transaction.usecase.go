@@ -15,5 +15,5 @@ func NewProcessTransaction(repo repository.TransactionRepository) *ProcessTransa
 }
 
 func (pt *ProcessTransaction) Execute(ctx context.Context, transaction domain.Transaction) error {
-	return pt.repo.Save(ctx, transaction)
+	return pt.repo.Upsert(ctx, transaction)
 }

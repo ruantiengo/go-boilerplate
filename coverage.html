@@ -3,7 +3,7 @@
 <html>
 	<head>
 		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-		<title>Go Coverage Report</title>
+		<title>cmd: Go Coverage Report</title>
 		<style>
 			body {
 				background: black;
@@ -55,26 +55,997 @@
 			<div id="nav">
 				<select id="files">
 				
+				<option value="file0">ruantiengo/cmd/main.go (0.0%)</option>
+				
+				<option value="file1">ruantiengo/config/application.go (0.0%)</option>
+				
+				<option value="file2">ruantiengo/config/check-variables.go (0.0%)</option>
+				
+				<option value="file3">ruantiengo/config/database/postgres.go (0.0%)</option>
+				
+				<option value="file4">ruantiengo/config/gim/server.go (0.0%)</option>
+				
+				<option value="file5">ruantiengo/config/log/log-message.go (0.0%)</option>
+				
+				<option value="file6">ruantiengo/config/rabbitmq/queues.go (0.0%)</option>
+				
+				<option value="file7">ruantiengo/config/rabbitmq/rabbitmq.go (0.0%)</option>
+				
+				<option value="file8">ruantiengo/database/generated/db.go (50.0%)</option>
+				
+				<option value="file9">ruantiengo/database/generated/models.go (15.4%)</option>
+				
+				<option value="file10">ruantiengo/database/generated/queries.sql.go (7.4%)</option>
+				
+				<option value="file11">ruantiengo/internal/transaction/infra/transaction-rabbit.infra.go (0.0%)</option>
+				
+				<option value="file12">ruantiengo/internal/transaction/infra/transaction-repository.infra.go (28.6%)</option>
+				
+				<option value="file13">ruantiengo/internal/transaction/usecases/transaction.usecase.go (0.0%)</option>
+				
 				</select>
 			</div>
 			<div id="legend">
 				<span>not tracked</span>
 			
-				<span class="cov0">no coverage</span>
-				<span class="cov1">low coverage</span>
-				<span class="cov2">*</span>
-				<span class="cov3">*</span>
-				<span class="cov4">*</span>
-				<span class="cov5">*</span>
-				<span class="cov6">*</span>
-				<span class="cov7">*</span>
-				<span class="cov8">*</span>
-				<span class="cov9">*</span>
-				<span class="cov10">high coverage</span>
+				<span class="cov0">not covered</span>
+				<span class="cov8">covered</span>
 			
 			</div>
 		</div>
 		<div id="content">
+		
+		<pre class="file" id="file0" style="display: none">package main
+
+import "ruantiengo/config"
+
+func main() <span class="cov0" title="0">{
+        app := config.NewApplication()
+        defer app.Shutdown()
+
+        app.Run()
+}</span>
+</pre>
+		
+		<pre class="file" id="file1" style="display: none">package config
+
+import (
+        "database/sql"
+        postgres_config "ruantiengo/config/database"
+        server_config "ruantiengo/config/gim"
+        logger "ruantiengo/config/log"
+        rabbit_config "ruantiengo/config/rabbitmq"
+        "ruantiengo/internal/transaction/infra"
+        usecase "ruantiengo/internal/transaction/usecases"
+
+        "github.com/gin-gonic/gin"
+)
+
+type Application struct {
+        db                  *sql.DB
+        rabbitMQManager     *rabbit_config.RabbitMQManager
+        transactionConsumer *infra.TransactionConsumer
+        router              *gin.Engine
+        server              *server_config.Server
+}
+
+func NewApplication() *Application <span class="cov0" title="0">{
+        CheckVariables()
+        return &amp;Application{
+                router: gin.Default(),
+        }
+}</span>
+
+func (app *Application) Run() <span class="cov0" title="0">{
+        if err := app.initDatabase(); err != nil </span><span class="cov0" title="0">{
+                logger.Message(logger.Error, "Failed to initialize database: %v", err)
+                return
+        }</span>
+
+        <span class="cov0" title="0">if err := app.initRabbitMQ(); err != nil </span><span class="cov0" title="0">{
+                logger.Message(logger.Error, "Failed to initialize RabbitMQ: %v", err)
+        }</span>
+
+        <span class="cov0" title="0">if err := app.initTransactionConsumer(); err != nil </span><span class="cov0" title="0">{
+                logger.Message(logger.Error, "Failed to initialize transaction consumer: %v", err)
+                return
+        }</span>
+
+        <span class="cov0" title="0">app.server = server_config.NewServer(app.router)
+        app.server.SetupRoutes()
+        app.server.Start()</span>
+}
+
+func (app *Application) initDatabase() error <span class="cov0" title="0">{
+        dbConfig := postgres_config.NewPostgresConfig()
+        db, err := postgres_config.NewPostgresDB(dbConfig)
+        if err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+        <span class="cov0" title="0">app.db = db
+        logger.Message(logger.Info, "✔️ Database initialized successfully")
+        return nil</span>
+}
+
+func (app *Application) initRabbitMQ() error <span class="cov0" title="0">{
+        rabbitMQConfig := rabbit_config.NewRabbitMQConfig()
+        manager := rabbit_config.NewRabbitMQManager(rabbitMQConfig)
+
+        if err := manager.Connect(); err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        <span class="cov0" title="0">if err := manager.DeclareQueue(rabbit_config.TransactionQueue.String()); err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        <span class="cov0" title="0">app.rabbitMQManager = manager
+        logger.Message(logger.Info, "✔️ RabbitMQ connection established successfully")
+        return nil</span>
+}
+
+func (app *Application) initTransactionConsumer() error <span class="cov0" title="0">{
+        if app.rabbitMQManager == nil </span><span class="cov0" title="0">{
+                return nil
+        }</span>
+
+        <span class="cov0" title="0">channel, err := app.rabbitMQManager.GetChannel()
+        if err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        <span class="cov0" title="0">transactionRepo := infra.NewPostgresTransactionRepository(app.db)
+        transactionService := usecase.NewProcessTransaction(transactionRepo)
+        consumer := infra.NewTransactionConsumer(channel, rabbit_config.TransactionQueue.String(), transactionService)
+
+        if err := consumer.Start(); err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        <span class="cov0" title="0">app.transactionConsumer = consumer
+        logger.Message(logger.Info, "✔️ Transaction consumer started successfully")
+        return nil</span>
+}
+
+func (app *Application) Shutdown() <span class="cov0" title="0">{
+        if app.db != nil </span><span class="cov0" title="0">{
+                app.db.Close()
+        }</span>
+        <span class="cov0" title="0">if app.rabbitMQManager != nil </span><span class="cov0" title="0">{
+                app.rabbitMQManager.Close()
+        }</span>
+        <span class="cov0" title="0">if app.server != nil </span><span class="cov0" title="0">{
+                app.server.Shutdown()
+        }</span>
+}
+</pre>
+		
+		<pre class="file" id="file2" style="display: none">package config
+
+import (
+        "log"
+        "os"
+        logger "ruantiengo/config/log"
+
+        "github.com/joho/godotenv"
+)
+
+func CheckVariables() <span class="cov0" title="0">{
+        // Primeiro carrega o arquivo .env
+        err := godotenv.Load()
+        if err != nil </span><span class="cov0" title="0">{
+                log.Fatal("Erro ao carregar o arquivo .env")
+        }</span>
+        <span class="cov0" title="0">logger.Message(logger.Info, "✔️ Arquivo .env carregado com sucesso.")
+
+        // Depois verifica as variáveis
+        requiredEnvVars := []string{
+                "POSTGRES_HOST",
+                "POSTGRES_PORT",
+                "POSTGRES_DB",
+                "POSTGRES_USER",
+                "POSTGRES_PASSWORD",
+
+                "DEBUG_MODE",
+
+                "RABBITMQ_URI",
+
+                "API_PORT",
+        }
+
+        missingVars := []string{}
+        for _, envVar := range requiredEnvVars </span><span class="cov0" title="0">{
+                if value := os.Getenv(envVar); value == "" </span><span class="cov0" title="0">{
+                        missingVars = append(missingVars, envVar)
+                }</span>
+        }
+
+        <span class="cov0" title="0">if len(missingVars) &gt; 0 </span><span class="cov0" title="0">{
+                logger.Message(logger.Error, "------------------------------------------------------")
+                logger.Message(logger.Error, "Variáveis de ambiente faltando:")
+                for _, envVar := range missingVars </span><span class="cov0" title="0">{
+                        logger.Message(logger.Error, "  ➡️ %s", envVar)
+                }</span>
+                <span class="cov0" title="0">logger.Message(logger.Error, "------------------------------------------------------")
+                logger.Message(logger.Error, "❌ A aplicação não pode ser executada até que todas as variáveis de ambiente sejam configuradas.")
+                logger.Message(logger.Error, "Consulte o arquivo .env para definir as variáveis faltantes.")
+                os.Exit(1)</span>
+        }
+
+        <span class="cov0" title="0">logger.Message(logger.Info, "✔️ Todas as variáveis de ambiente estão configuradas corretamente.")</span>
+}
+</pre>
+		
+		<pre class="file" id="file3" style="display: none">package postgres_config
+
+import (
+        "database/sql"
+        "fmt"
+        "os"
+        logger "ruantiengo/config/log"
+
+        _ "github.com/lib/pq"
+)
+
+type PostgresConfig struct {
+        Host     string
+        Port     string
+        Database string
+        User     string
+        Password string
+}
+
+func NewPostgresConfig() *PostgresConfig <span class="cov0" title="0">{
+        return &amp;PostgresConfig{
+                Host:     os.Getenv("POSTGRES_HOST"),
+                Port:     os.Getenv("POSTGRES_PORT"),
+                Database: os.Getenv("POSTGRES_DB"),
+                User:     os.Getenv("POSTGRES_USER"),
+                Password: os.Getenv("POSTGRES_PASSWORD"),
+        }
+}</span>
+
+func (c *PostgresConfig) ConnectionString() string <span class="cov0" title="0">{
+        return fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
+                c.Host, c.Port, c.User, c.Password, c.Database)
+}</span>
+
+func NewPostgresDB(config *PostgresConfig) (*sql.DB, error) <span class="cov0" title="0">{
+        db, err := sql.Open("postgres", config.ConnectionString())
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("error opening database connection: %v", err)
+        }</span>
+
+        <span class="cov0" title="0">if err := db.Ping(); err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("error connecting to the database: %v", err)
+        }</span>
+
+        <span class="cov0" title="0">logger.Message(logger.Info, "✔️ Conexão com o PostgreSQL estabelecida com sucesso.")
+        return db, nil</span>
+}
+</pre>
+		
+		<pre class="file" id="file4" style="display: none">package server_config
+
+import (
+        "context"
+        "net/http"
+        "os"
+        "os/signal"
+        "syscall"
+        "time"
+
+        logger "ruantiengo/config/log"
+
+        "github.com/gin-gonic/gin"
+)
+
+type Server struct {
+        router *gin.Engine
+        http   *http.Server
+}
+
+func NewServer(router *gin.Engine) *Server <span class="cov0" title="0">{
+        return &amp;Server{
+                router: router,
+        }
+}</span>
+
+func (s *Server) SetupRoutes() <span class="cov0" title="0">{
+        s.router.GET("/health", func(c *gin.Context) </span><span class="cov0" title="0">{
+                c.JSON(http.StatusOK, gin.H{
+                        "status": "OK",
+                })
+        }</span>)
+
+        // Add more routes here
+}
+
+func (s *Server) Start() <span class="cov0" title="0">{
+        PORT := os.Getenv("API_PORT")
+        s.http = &amp;http.Server{
+                Addr:    ":" + PORT,
+                Handler: s.router,
+        }
+
+        go func() </span><span class="cov0" title="0">{
+                if err := s.http.ListenAndServe(); err != nil &amp;&amp; err != http.ErrServerClosed </span><span class="cov0" title="0">{
+                        logger.Message(logger.Error, "Failed to start server: %v", err)
+                }</span>
+        }()
+
+        <span class="cov0" title="0">logger.Message(logger.Info, "✔️ Server started on http://localhost:"+PORT)
+
+        quit := make(chan os.Signal, 1)
+        signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+        &lt;-quit
+
+        logger.Message(logger.Info, "Shutting down server...")
+
+        ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+        defer cancel()
+        if err := s.http.Shutdown(ctx); err != nil </span><span class="cov0" title="0">{
+                logger.Message(logger.Error, "Server forced to shutdown: %v", err)
+        }</span>
+
+        <span class="cov0" title="0">logger.Message(logger.Info, "Server exiting")</span>
+}
+
+func (s *Server) Shutdown() <span class="cov0" title="0">{
+        if s.http != nil </span><span class="cov0" title="0">{
+                ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+                defer cancel()
+                if err := s.http.Shutdown(ctx); err != nil </span><span class="cov0" title="0">{
+                        logger.Message(logger.Error, "Server forced to shutdown: %v", err)
+                }</span>
+        }
+}
+</pre>
+		
+		<pre class="file" id="file5" style="display: none">package logger
+
+import (
+        "os"
+
+        "github.com/fatih/color"
+)
+
+type LogType int
+
+const (
+        Info LogType = iota
+        Warning
+        Error
+        Debug
+        Default
+)
+
+func Message(logType LogType, message string, args ...interface{}) <span class="cov0" title="0">{
+        switch logType </span>{
+        case Info:<span class="cov0" title="0">
+                color.Green(message, args...)</span>
+        case Warning:<span class="cov0" title="0">
+                color.Yellow(message, args...)</span>
+        case Error:<span class="cov0" title="0">
+                color.Red(message, args...)</span>
+        case Debug:<span class="cov0" title="0">
+                debug := os.Getenv("DEBUG_MODE") == "true"
+                if debug </span><span class="cov0" title="0">{
+                        color.Blue(message, args...)
+                }</span>
+        default:<span class="cov0" title="0">
+                color.White(message, args...)</span>
+        }
+}
+</pre>
+		
+		<pre class="file" id="file6" style="display: none">package rabbit_config
+
+import "fmt"
+
+type Queue string
+
+const (
+        TransactionQueue Queue = "transaction_queue"
+)
+
+func (q Queue) String() string <span class="cov0" title="0">{
+        return string(q)
+}</span>
+
+func (m *RabbitMQManager) DeclareQueue(queueName string) error <span class="cov0" title="0">{
+        ch, err := m.GetChannel()
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to get channel: %v", err)
+        }</span>
+
+        <span class="cov0" title="0">_, err = ch.QueueDeclare(
+                queueName, // name
+                true,      // durable
+                false,     // delete when unused
+                false,     // exclusive
+                false,     // no-wait
+                nil,       // arguments
+        )
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to declare queue: %v", err)
+        }</span>
+
+        <span class="cov0" title="0">return nil</span>
+}
+</pre>
+		
+		<pre class="file" id="file7" style="display: none">package rabbit_config
+
+import (
+        "fmt"
+        "os"
+        "time"
+
+        logger "ruantiengo/config/log"
+
+        "github.com/streadway/amqp"
+)
+
+type RabbitMQConfig struct {
+        Uri string
+}
+
+type RabbitMQManager struct {
+        Config *RabbitMQConfig
+        Conn   *amqp.Connection
+        Ch     *amqp.Channel
+}
+
+func NewRabbitMQConfig() *RabbitMQConfig <span class="cov0" title="0">{
+        return &amp;RabbitMQConfig{
+                Uri: os.Getenv("RABBITMQ_URI"),
+        }
+}</span>
+
+func (c *RabbitMQConfig) ConnectionString() string <span class="cov0" title="0">{
+        return fmt.Sprintf("%s", c.Uri)
+}</span>
+
+func NewRabbitMQManager(config *RabbitMQConfig) *RabbitMQManager <span class="cov0" title="0">{
+        return &amp;RabbitMQManager{
+                Config: config,
+        }
+}</span>
+
+func (m *RabbitMQManager) Connect() error <span class="cov0" title="0">{
+        var err error
+        m.Conn, err = amqp.Dial(m.Config.ConnectionString())
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to connect to RabbitMQ: %v", err)
+        }</span>
+
+        <span class="cov0" title="0">m.Ch, err = m.Conn.Channel()
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to open a channel: %v", err)
+        }</span>
+
+        <span class="cov0" title="0">go m.handleReconnect()
+
+        return nil</span>
+}
+
+func (m *RabbitMQManager) handleReconnect() <span class="cov0" title="0">{
+        for </span><span class="cov0" title="0">{
+                reason, ok := &lt;-m.Conn.NotifyClose(make(chan *amqp.Error))
+                if !ok </span><span class="cov0" title="0">{
+                        logger.Message(logger.Warning, "RabbitMQ connection closed. Attempting to reconnect...")
+                        break</span>
+                }
+                <span class="cov0" title="0">logger.Message(logger.Error, "RabbitMQ connection closed. Reason: %v", reason)
+
+                for </span><span class="cov0" title="0">{
+                        time.Sleep(5 * time.Second)
+
+                        err := m.Connect()
+                        if err == nil </span><span class="cov0" title="0">{
+                                logger.Message(logger.Info, "Successfully reconnected to RabbitMQ")
+                                break</span>
+                        }
+
+                        <span class="cov0" title="0">logger.Message(logger.Error, "Failed to reconnect to RabbitMQ: %v", err)</span>
+                }
+        }
+}
+
+func (m *RabbitMQManager) GetChannel() (*amqp.Channel, error) <span class="cov0" title="0">{
+        if m.Ch == nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("RabbitMQ channel is not initialized")
+        }</span>
+        <span class="cov0" title="0">return m.Ch, nil</span>
+}
+
+func (m *RabbitMQManager) Close() <span class="cov0" title="0">{
+        if m.Ch != nil </span><span class="cov0" title="0">{
+                m.Ch.Close()
+        }</span>
+        <span class="cov0" title="0">if m.Conn != nil </span><span class="cov0" title="0">{
+                m.Conn.Close()
+        }</span>
+}
+</pre>
+		
+		<pre class="file" id="file8" style="display: none">// Code generated by sqlc. DO NOT EDIT.
+// versions:
+//   sqlc v1.27.0
+
+package db
+
+import (
+        "context"
+        "database/sql"
+)
+
+type DBTX interface {
+        ExecContext(context.Context, string, ...interface{}) (sql.Result, error)
+        PrepareContext(context.Context, string) (*sql.Stmt, error)
+        QueryContext(context.Context, string, ...interface{}) (*sql.Rows, error)
+        QueryRowContext(context.Context, string, ...interface{}) *sql.Row
+}
+
+func New(db DBTX) *Queries <span class="cov8" title="1">{
+        return &amp;Queries{db: db}
+}</span>
+
+type Queries struct {
+        db DBTX
+}
+
+func (q *Queries) WithTx(tx *sql.Tx) *Queries <span class="cov0" title="0">{
+        return &amp;Queries{
+                db: tx,
+        }
+}</span>
+</pre>
+		
+		<pre class="file" id="file9" style="display: none">// Code generated by sqlc. DO NOT EDIT.
+// versions:
+//   sqlc v1.27.0
+
+package db
+
+import (
+        "database/sql/driver"
+        "fmt"
+        "time"
+
+        "github.com/google/uuid"
+)
+
+type PaymentMethod string
+
+const (
+        PaymentMethodBill       PaymentMethod = "bill"
+        PaymentMethodPix        PaymentMethod = "pix"
+        PaymentMethodCreditCard PaymentMethod = "credit_card"
+)
+
+func (e *PaymentMethod) Scan(src interface{}) error <span class="cov0" title="0">{
+        switch s := src.(type) </span>{
+        case []byte:<span class="cov0" title="0">
+                *e = PaymentMethod(s)</span>
+        case string:<span class="cov0" title="0">
+                *e = PaymentMethod(s)</span>
+        default:<span class="cov0" title="0">
+                return fmt.Errorf("unsupported scan type for PaymentMethod: %T", src)</span>
+        }
+        <span class="cov0" title="0">return nil</span>
+}
+
+type NullPaymentMethod struct {
+        PaymentMethod PaymentMethod
+        Valid         bool // Valid is true if PaymentMethod is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullPaymentMethod) Scan(value interface{}) error <span class="cov0" title="0">{
+        if value == nil </span><span class="cov0" title="0">{
+                ns.PaymentMethod, ns.Valid = "", false
+                return nil
+        }</span>
+        <span class="cov0" title="0">ns.Valid = true
+        return ns.PaymentMethod.Scan(value)</span>
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullPaymentMethod) Value() (driver.Value, error) <span class="cov8" title="1">{
+        if !ns.Valid </span><span class="cov0" title="0">{
+                return nil, nil
+        }</span>
+        <span class="cov8" title="1">return string(ns.PaymentMethod), nil</span>
+}
+
+type TransactionStatus string
+
+const (
+        TransactionStatusPending   TransactionStatus = "pending"
+        TransactionStatusCancelled TransactionStatus = "cancelled"
+        TransactionStatusExpired   TransactionStatus = "expired"
+        TransactionStatusApproved  TransactionStatus = "approved"
+)
+
+func (e *TransactionStatus) Scan(src interface{}) error <span class="cov0" title="0">{
+        switch s := src.(type) </span>{
+        case []byte:<span class="cov0" title="0">
+                *e = TransactionStatus(s)</span>
+        case string:<span class="cov0" title="0">
+                *e = TransactionStatus(s)</span>
+        default:<span class="cov0" title="0">
+                return fmt.Errorf("unsupported scan type for TransactionStatus: %T", src)</span>
+        }
+        <span class="cov0" title="0">return nil</span>
+}
+
+type NullTransactionStatus struct {
+        TransactionStatus TransactionStatus
+        Valid             bool // Valid is true if TransactionStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullTransactionStatus) Scan(value interface{}) error <span class="cov0" title="0">{
+        if value == nil </span><span class="cov0" title="0">{
+                ns.TransactionStatus, ns.Valid = "", false
+                return nil
+        }</span>
+        <span class="cov0" title="0">ns.Valid = true
+        return ns.TransactionStatus.Scan(value)</span>
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullTransactionStatus) Value() (driver.Value, error) <span class="cov8" title="1">{
+        if !ns.Valid </span><span class="cov0" title="0">{
+                return nil, nil
+        }</span>
+        <span class="cov8" title="1">return string(ns.TransactionStatus), nil</span>
+}
+
+type SchemaMigration struct {
+        Version int64
+        Dirty   bool
+}
+
+type Transaction struct {
+        BankSlipUuid  uuid.UUID
+        Status        NullTransactionStatus
+        CreatedAt     time.Time
+        UpdatedAt     time.Time
+        PaymentMethod NullPaymentMethod
+}
+</pre>
+		
+		<pre class="file" id="file10" style="display: none">// Code generated by sqlc. DO NOT EDIT.
+// versions:
+//   sqlc v1.27.0
+// source: queries.sql
+
+package db
+
+import (
+        "context"
+        "time"
+
+        "github.com/google/uuid"
+)
+
+const createTransaction = `-- name: CreateTransaction :exec
+INSERT INTO Transaction (bank_slip_uuid, status, created_at, updated_at, payment_method)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING bank_slip_uuid, status, created_at, updated_at, payment_method
+`
+
+type CreateTransactionParams struct {
+        BankSlipUuid  uuid.UUID
+        Status        NullTransactionStatus
+        CreatedAt     time.Time
+        UpdatedAt     time.Time
+        PaymentMethod NullPaymentMethod
+}
+
+func (q *Queries) CreateTransaction(ctx context.Context, arg CreateTransactionParams) error <span class="cov8" title="1">{
+        _, err := q.db.ExecContext(ctx, createTransaction,
+                arg.BankSlipUuid,
+                arg.Status,
+                arg.CreatedAt,
+                arg.UpdatedAt,
+                arg.PaymentMethod,
+        )
+        return err
+}</span>
+
+const deleteTransaction = `-- name: DeleteTransaction :exec
+
+DELETE FROM Transaction
+WHERE bank_slip_uuid = $1
+`
+
+// Added missing semicolon here
+func (q *Queries) DeleteTransaction(ctx context.Context, bankSlipUuid uuid.UUID) error <span class="cov0" title="0">{
+        _, err := q.db.ExecContext(ctx, deleteTransaction, bankSlipUuid)
+        return err
+}</span>
+
+const getAllTransactions = `-- name: GetAllTransactions :many
+SELECT bank_slip_uuid, status, created_at, updated_at, payment_method
+FROM Transaction
+`
+
+func (q *Queries) GetAllTransactions(ctx context.Context) ([]Transaction, error) <span class="cov0" title="0">{
+        rows, err := q.db.QueryContext(ctx, getAllTransactions)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">defer rows.Close()
+        var items []Transaction
+        for rows.Next() </span><span class="cov0" title="0">{
+                var i Transaction
+                if err := rows.Scan(
+                        &amp;i.BankSlipUuid,
+                        &amp;i.Status,
+                        &amp;i.CreatedAt,
+                        &amp;i.UpdatedAt,
+                        &amp;i.PaymentMethod,
+                ); err != nil </span><span class="cov0" title="0">{
+                        return nil, err
+                }</span>
+                <span class="cov0" title="0">items = append(items, i)</span>
+        }
+        <span class="cov0" title="0">if err := rows.Close(); err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">if err := rows.Err(); err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">return items, nil</span>
+}
+
+const getTransactionByUUID = `-- name: GetTransactionByUUID :one
+SELECT bank_slip_uuid, status, created_at, updated_at, payment_method
+FROM Transaction
+WHERE bank_slip_uuid = $1
+`
+
+func (q *Queries) GetTransactionByUUID(ctx context.Context, bankSlipUuid uuid.UUID) (Transaction, error) <span class="cov0" title="0">{
+        row := q.db.QueryRowContext(ctx, getTransactionByUUID, bankSlipUuid)
+        var i Transaction
+        err := row.Scan(
+                &amp;i.BankSlipUuid,
+                &amp;i.Status,
+                &amp;i.CreatedAt,
+                &amp;i.UpdatedAt,
+                &amp;i.PaymentMethod,
+        )
+        return i, err
+}</span>
+
+const updateTransaction = `-- name: UpdateTransaction :exec
+UPDATE Transaction
+SET
+    status = COALESCE($1, status),
+    updated_at = COALESCE($2, updated_at),
+    payment_method = COALESCE($3, payment_method)
+WHERE bank_slip_uuid = $4
+`
+
+type UpdateTransactionParams struct {
+        Status        NullTransactionStatus
+        UpdatedAt     time.Time
+        PaymentMethod NullPaymentMethod
+        BankSlipUuid  uuid.UUID
+}
+
+func (q *Queries) UpdateTransaction(ctx context.Context, arg UpdateTransactionParams) error <span class="cov0" title="0">{
+        _, err := q.db.ExecContext(ctx, updateTransaction,
+                arg.Status,
+                arg.UpdatedAt,
+                arg.PaymentMethod,
+                arg.BankSlipUuid,
+        )
+        return err
+}</span>
+
+const updateTransactionStatus = `-- name: UpdateTransactionStatus :exec
+UPDATE Transaction
+SET status = $1, updated_at = $2
+WHERE bank_slip_uuid = $3
+`
+
+type UpdateTransactionStatusParams struct {
+        Status       NullTransactionStatus
+        UpdatedAt    time.Time
+        BankSlipUuid uuid.UUID
+}
+
+func (q *Queries) UpdateTransactionStatus(ctx context.Context, arg UpdateTransactionStatusParams) error <span class="cov0" title="0">{
+        _, err := q.db.ExecContext(ctx, updateTransactionStatus, arg.Status, arg.UpdatedAt, arg.BankSlipUuid)
+        return err
+}</span>
+</pre>
+		
+		<pre class="file" id="file11" style="display: none">package infra
+
+import (
+        "context"
+        "encoding/json"
+        logger "ruantiengo/config/log"
+        "ruantiengo/internal/transaction/domain"
+        usecase "ruantiengo/internal/transaction/usecases"
+        "time"
+
+        "github.com/google/uuid"
+        "github.com/streadway/amqp"
+)
+
+type TransactionConsumer struct {
+        channel            *amqp.Channel
+        queueName          string
+        processTransaction *usecase.ProcessTransaction
+}
+
+func NewTransactionConsumer(channel *amqp.Channel, queueName string, processTransaction *usecase.ProcessTransaction) *TransactionConsumer <span class="cov0" title="0">{
+        return &amp;TransactionConsumer{
+                channel:            channel,
+                queueName:          queueName,
+                processTransaction: processTransaction,
+        }
+}</span>
+
+func (c *TransactionConsumer) Start() error <span class="cov0" title="0">{
+        msgs, err := c.channel.Consume(
+                c.queueName,
+                "",    // consumer
+                true,  // auto-ack
+                false, // exclusive
+                false, // no-local
+                false, // no-wait
+                nil,   // args
+        )
+        if err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        <span class="cov0" title="0">go func() </span><span class="cov0" title="0">{
+                for msg := range msgs </span><span class="cov0" title="0">{
+                        c.processMessage(msg)
+                }</span>
+        }()
+
+        <span class="cov0" title="0">return nil</span>
+}
+
+func (c *TransactionConsumer) processMessage(msg amqp.Delivery) <span class="cov0" title="0">{
+        var transactionDTO TransactionDTO
+        err := json.Unmarshal(msg.Body, &amp;transactionDTO)
+        if err != nil </span><span class="cov0" title="0">{
+                logger.Message(logger.Error, "Erro ao decodificar mensagem: %v", err)
+                return
+        }</span>
+
+        <span class="cov0" title="0">transaction := mapDTOToDomain(transactionDTO)
+
+        err = c.processTransaction.Execute(context.Background(), transaction)
+        if err != nil </span><span class="cov0" title="0">{
+                logger.Message(logger.Error, "Erro ao processar transação: %v", err)
+                // Implement retry logic or dead-letter queue here
+                return
+        }</span>
+
+        <span class="cov0" title="0">logger.Message(logger.Info, "Transação processada com sucesso: %s", transaction.BankSlipUuid)</span>
+}
+
+type TransactionDTO struct {
+        BankSlipUuid  string `json:"bank_slip_uuid"`
+        Status        string `json:"status"`
+        CreatedAt     string `json:"created_at"`
+        UpdatedAt     string `json:"updated_at"`
+        PaymentMethod string `json:"payment_method"`
+}
+
+func mapDTOToDomain(dto TransactionDTO) domain.Transaction <span class="cov0" title="0">{
+        return domain.Transaction{
+                BankSlipUuid:  uuid.MustParse(dto.BankSlipUuid),
+                Status:        domain.TransactionStatus(dto.Status),
+                CreatedAt:     parseTime(dto.CreatedAt),
+                UpdatedAt:     parseTime(dto.UpdatedAt),
+                PaymentMethod: domain.PaymentMethod(dto.PaymentMethod),
+        }
+}</span>
+
+func parseTime(timeStr string) time.Time <span class="cov0" title="0">{
+        t, err := time.Parse(time.RFC3339, timeStr)
+        if err != nil </span><span class="cov0" title="0">{
+                logger.Message(logger.Warning, "Erro ao fazer parse do tempo: %v", err)
+                return time.Time{}
+        }</span>
+        <span class="cov0" title="0">return t</span>
+}
+</pre>
+		
+		<pre class="file" id="file12" style="display: none">package infra
+
+import (
+        "context"
+        "database/sql"
+        db "ruantiengo/database/generated"
+        "ruantiengo/internal/transaction/domain"
+        "ruantiengo/internal/transaction/repository"
+
+        "github.com/google/uuid"
+)
+
+type postgresTransactionRepository struct {
+        queries *db.Queries
+}
+
+func NewPostgresTransactionRepository(sqlDB *sql.DB) repository.TransactionRepository <span class="cov8" title="1">{
+        return &amp;postgresTransactionRepository{
+                queries: db.New(sqlDB),
+        }
+}</span>
+
+func (r *postgresTransactionRepository) Save(ctx context.Context, transaction domain.Transaction) error <span class="cov8" title="1">{
+        params := db.CreateTransactionParams{
+                BankSlipUuid:  transaction.BankSlipUuid,
+                Status:        db.NullTransactionStatus{Valid: true, TransactionStatus: db.TransactionStatus(transaction.Status)},
+                CreatedAt:     transaction.CreatedAt,
+                UpdatedAt:     transaction.UpdatedAt,
+                PaymentMethod: db.NullPaymentMethod{Valid: true, PaymentMethod: db.PaymentMethod(transaction.PaymentMethod)},
+        }
+
+        err := r.queries.CreateTransaction(ctx, params)
+        return err
+}</span>
+
+func (r *postgresTransactionRepository) GetByBankSlipUuid(ctx context.Context, bankSlipUuid string) (domain.Transaction, error) <span class="cov0" title="0">{
+        uuid, err := uuid.Parse(bankSlipUuid)
+        if err != nil </span><span class="cov0" title="0">{
+                return domain.Transaction{}, err
+        }</span>
+
+        <span class="cov0" title="0">dbTransaction, err := r.queries.GetTransactionByUUID(ctx, uuid)
+        if err != nil </span><span class="cov0" title="0">{
+                return domain.Transaction{}, err
+        }</span>
+
+        <span class="cov0" title="0">return domain.Transaction{
+                BankSlipUuid: dbTransaction.BankSlipUuid,
+                Status:       domain.TransactionStatus(dbTransaction.Status.TransactionStatus),
+                CreatedAt:    dbTransaction.CreatedAt,
+                UpdatedAt:    dbTransaction.UpdatedAt,
+                PaymentMethod: func() domain.PaymentMethod </span><span class="cov0" title="0">{
+                        if dbTransaction.PaymentMethod.Valid </span><span class="cov0" title="0">{
+                                return domain.PaymentMethod(dbTransaction.PaymentMethod.PaymentMethod)
+                        }</span>
+                        <span class="cov0" title="0">return domain.PaymentMethod("")</span>
+                }(),
+        }, nil
+}
+</pre>
+		
+		<pre class="file" id="file13" style="display: none">package usecase
+
+import (
+        "context"
+        "ruantiengo/internal/transaction/domain"
+        "ruantiengo/internal/transaction/repository"
+)
+
+type ProcessTransaction struct {
+        repo repository.TransactionRepository
+}
+
+func NewProcessTransaction(repo repository.TransactionRepository) *ProcessTransaction <span class="cov0" title="0">{
+        return &amp;ProcessTransaction{repo: repo}
+}</span>
+
+func (pt *ProcessTransaction) Execute(ctx context.Context, transaction domain.Transaction) error <span class="cov0" title="0">{
+        return pt.repo.Save(ctx, transaction)
+}</span>
+</pre>
 		
 		</div>
 	</body>

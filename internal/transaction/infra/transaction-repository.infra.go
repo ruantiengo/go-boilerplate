@@ -20,8 +20,8 @@ func NewPostgresTransactionRepository(sqlDB *sql.DB) repository.TransactionRepos
 	}
 }
 
-func (r *postgresTransactionRepository) Save(ctx context.Context, transaction domain.Transaction) error {
-	params := db.CreateTransactionParams{
+func (r *postgresTransactionRepository) Upsert(ctx context.Context, transaction domain.Transaction) error {
+	params := db.UpsertTransactionParams{
 		BankSlipUuid:  transaction.BankSlipUuid,
 		Status:        db.NullTransactionStatus{Valid: true, TransactionStatus: db.TransactionStatus(transaction.Status)},
 		CreatedAt:     transaction.CreatedAt,
@@ -29,7 +29,7 @@ func (r *postgresTransactionRepository) Save(ctx context.Context, transaction do
 		PaymentMethod: db.NullPaymentMethod{Valid: true, PaymentMethod: db.PaymentMethod(transaction.PaymentMethod)},
 	}
 
-	err := r.queries.CreateTransaction(ctx, params)
+	err, _ := r.queries.UpsertTransaction(ctx, params)
 	return err
 }
 

@@ -6,5 +6,5 @@ import (
 )
 
 type TransactionRepository interface {
-	Save(ctx context.Context, transaction domain.Transaction) error
+	Upsert(ctx context.Context, transaction domain.Transaction) error
 }

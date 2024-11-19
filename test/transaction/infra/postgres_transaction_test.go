@@ -1,78 +1,91 @@
-package test
+package infra
 
 import (
 	"context"
-	"errors"
+	"database/sql"
 	"testing"
 	"time"
-
-	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
 
 	db "ruantiengo/database/generated"
 	"ruantiengo/internal/transaction/domain"
 	"ruantiengo/internal/transaction/infra"
+
+	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
 )
 
-func TestPostgresTransactionRepository(t *testing.T) {
-	sqlDB, mock, err := sqlmock.New()
+func TestPostgresTransactionRepository_Upsert(t *testing.T) {
+	mockDB, mock, err := sqlmock.New()
 	if err != nil {
-		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+		t.Fatalf("An error '%s' was not expected when opening a stub database connection", err)
 	}
-	defer sqlDB.Close()
+	defer mockDB.Close()
 
-	repo := infra.NewPostgresTransactionRepository(sqlDB)
+	repo := infra.NewPostgresTransactionRepository(mockDB)
 
-	t.Run("Save", func(t *testing.T) {
-		ctx := context.Background()
-		transaction := domain.Transaction{
-			BankSlipUuid:  uuid.New(),
-			Status:        domain.TransactionStatusApproved,
-			CreatedAt:     time.Now(),
-			UpdatedAt:     time.Now(),
-			PaymentMethod: domain.PaymentMethodCreditCard,
-		}
+	now := time.Now()
+	sampleTransaction := domain.Transaction{
+		BankSlipUuid:  uuid.New(),
+		Status:        domain.TransactionStatusPending,
+		CreatedAt:     now,
+		UpdatedAt:     now,
+		PaymentMethod: domain.PaymentMethodCreditCard,
+	}
 
-		mock.ExpectExec("INSERT INTO Transaction").
-			WithArgs(
-				transaction.BankSlipUuid,
-				db.TransactionStatus(transaction.Status),
-				transaction.CreatedAt,
-				transaction.UpdatedAt,
-				db.PaymentMethod(transaction.PaymentMethod),
-			).
-			WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec("INSERT INTO transactions").
+		WithArgs(
+			sampleTransaction.BankSlipUuid,
+			db.TransactionStatus(sampleTransaction.Status),
+			sampleTransaction.CreatedAt,
+			sampleTransaction.UpdatedAt,
+			db.PaymentMethod(sampleTransaction.PaymentMethod),
+		).
+		WillReturnResult(sqlmock.NewResult(1, 1))
 
-		err := repo.Save(ctx, transaction)
+	err = repo.Upsert(context.Background(), sampleTransaction)
 
-		assert.NoError(t, err)
-		assert.NoError(t, mock.ExpectationsWereMet())
-	})
+	assert.NoError(t, err)
 
-	t.Run("Save Error", func(t *testing.T) {
-		ctx := context.Background()
-		transaction := domain.Transaction{
-			BankSlipUuid:  uuid.New(),
-			Status:        domain.TransactionStatusApproved,
-			CreatedAt:     time.Now(),
-			UpdatedAt:     time.Now(),
-			PaymentMethod: domain.PaymentMethodCreditCard,
-		}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("There were unfulfilled expectations: %s", err)
+	}
+}
 
-		mock.ExpectExec("INSERT INTO Transaction").
-			WithArgs(
-				transaction.BankSlipUuid,
-				db.TransactionStatus(transaction.Status),
-				transaction.CreatedAt,
-				transaction.UpdatedAt,
-				db.PaymentMethod(transaction.PaymentMethod),
-			).
-			WillReturnError(errors.New("database error"))
+func TestPostgresTransactionRepository_Upsert_Error(t *testing.T) {
+	mockDB, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("An error '%s' was not expected when opening a stub database connection", err)
+	}
+	defer mockDB.Close()
 
-		err := repo.Save(ctx, transaction)
+	repo := infra.NewPostgresTransactionRepository(mockDB)
 
-		assert.Error(t, err)
-		assert.NoError(t, mock.ExpectationsWereMet())
-	})
+	now := time.Now()
+	sampleTransaction := domain.Transaction{
+		BankSlipUuid:  uuid.New(),
+		Status:        domain.TransactionStatusPending,
+		CreatedAt:     now,
+		UpdatedAt:     now,
+		PaymentMethod: domain.PaymentMethodCreditCard,
+	}
+
+	mock.ExpectExec("INSERT INTO transactions").
+		WithArgs(
+			sampleTransaction.BankSlipUuid,
+			db.TransactionStatus(sampleTransaction.Status),
+			sampleTransaction.CreatedAt,
+			sampleTransaction.UpdatedAt,
+			db.PaymentMethod(sampleTransaction.PaymentMethod),
+		).
+		WillReturnError(sql.ErrConnDone)
+
+	err = repo.Upsert(context.Background(), sampleTransaction)
+
+	assert.Error(t, err)
+	assert.Equal(t, sql.ErrConnDone, err)
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("There were unfulfilled expectations: %s", err)
+	}
 }

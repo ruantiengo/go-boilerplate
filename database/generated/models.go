@@ -111,3 +111,8 @@ type Transaction struct {
 	UpdatedAt     time.Time
 	PaymentMethod NullPaymentMethod
 }
+
+// Error implements error.
+func (t Transaction) Error() string {
+	panic("unimplemented")
+}
