@@ -30,3 +30,6 @@ Godeps/
 
 # Go workspace file
 go.work
+
+# database
+postgres-data
