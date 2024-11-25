@@ -6,8 +6,8 @@ import (
 	server_config "ruantiengo/config/gim"
 	logger "ruantiengo/config/log"
 	rabbit_config "ruantiengo/config/rabbitmq"
-	"ruantiengo/internal/transaction/infra"
-	usecase "ruantiengo/internal/transaction/usecases"
+	"ruantiengo/internal/infra"
+	usecase "ruantiengo/internal/usecases"
 
 	"github.com/gin-gonic/gin"
 )
@@ -87,7 +87,11 @@ func (app *Application) initTransactionConsumer() error {
 
 	transactionRepo := infra.NewPostgresTransactionRepository(app.db)
 	transactionService := usecase.NewProcessTransaction(transactionRepo)
-	consumer := infra.NewTransactionConsumer(channel, rabbit_config.TransactionQueue.String(), transactionService)
+
+	stasRepo := infra.NewPostgresStatsRepository(app.db)
+	statsService := usecase.NewUpdateStatistics(stasRepo)
+
+	consumer := infra.NewTransactionConsumer(channel, rabbit_config.TransactionQueue.String(), transactionService, statsService)
 
 	if err := consumer.Start(); err != nil {
 		return err

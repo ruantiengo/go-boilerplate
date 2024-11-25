@@ -7,40 +7,54 @@ package db
 
 import (
 	"context"
+	"database/sql"
 	"time"
 
 	"github.com/google/uuid"
 )
 
 const createTransaction = `-- name: CreateTransaction :one
-INSERT INTO transaction (id, status, created_at, updated_at, due_date, total, customer_id, tenant_id, branch_id)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-RETURNING id, bank_slip_uuid, status, created_at, updated_at, due_date, total, customer_id, tenant_id, branch_id, payment_method
+
+
+INSERT INTO Transaction (
+    id, bank_slip_uuid, status, created_at, updated_at, due_date, total, customer_document_number, tenant_id, branch_id, payment_method
+) VALUES (
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
+)
+RETURNING id, bank_slip_uuid, status, created_at, updated_at, due_date, total, customer_document_number, tenant_id, branch_id, payment_method
 `
 
 type CreateTransactionParams struct {
-	ID         uuid.UUID
-	Status     NullTransactionStatus
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
-	DueDate    time.Time
-	Total      string
-	CustomerID string
-	TenantID   string
-	BranchID   string
+	ID                     uuid.UUID
+	BankSlipUuid           uuid.NullUUID
+	Status                 NullTransactionStatus
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
+	DueDate                time.Time
+	Total                  string
+	CustomerDocumentNumber string
+	TenantID               string
+	BranchID               string
+	PaymentMethod          NullPaymentMethod
 }
 
+// ############################
+// # QUERIES PARA TRANSACTION #
+// ############################
+// Criação de uma nova transação
 func (q *Queries) CreateTransaction(ctx context.Context, arg CreateTransactionParams) (Transaction, error) {
 	row := q.db.QueryRowContext(ctx, createTransaction,
 		arg.ID,
+		arg.BankSlipUuid,
 		arg.Status,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 		arg.DueDate,
 		arg.Total,
-		arg.CustomerID,
+		arg.CustomerDocumentNumber,
 		arg.TenantID,
 		arg.BranchID,
+		arg.PaymentMethod,
 	)
 	var i Transaction
 	err := row.Scan(
@@ -51,7 +65,7 @@ func (q *Queries) CreateTransaction(ctx context.Context, arg CreateTransactionPa
 		&i.UpdatedAt,
 		&i.DueDate,
 		&i.Total,
-		&i.CustomerID,
+		&i.CustomerDocumentNumber,
 		&i.TenantID,
 		&i.BranchID,
 		&i.PaymentMethod,
@@ -60,7 +74,8 @@ func (q *Queries) CreateTransaction(ctx context.Context, arg CreateTransactionPa
 }
 
 const deleteTransaction = `-- name: DeleteTransaction :exec
-DELETE FROM transaction WHERE id = $1
+DELETE FROM Transaction
+WHERE id = $1
 `
 
 func (q *Queries) DeleteTransaction(ctx context.Context, id uuid.UUID) error {
@@ -68,12 +83,594 @@ func (q *Queries) DeleteTransaction(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
-const getTransactionByID = `-- name: GetTransactionByID :one
-SELECT id, bank_slip_uuid, status, created_at, updated_at, due_date, total, customer_id, tenant_id, branch_id, payment_method FROM transaction WHERE id = $1
+const getAllTransactions = `-- name: GetAllTransactions :many
+SELECT id, bank_slip_uuid, status, created_at, updated_at, due_date, total, customer_document_number, tenant_id, branch_id, payment_method FROM Transaction
 `
 
-func (q *Queries) GetTransactionByID(ctx context.Context, id uuid.UUID) (Transaction, error) {
-	row := q.db.QueryRowContext(ctx, getTransactionByID, id)
+func (q *Queries) GetAllTransactions(ctx context.Context) ([]Transaction, error) {
+	rows, err := q.db.QueryContext(ctx, getAllTransactions)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Transaction
+	for rows.Next() {
+		var i Transaction
+		if err := rows.Scan(
+			&i.ID,
+			&i.BankSlipUuid,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DueDate,
+			&i.Total,
+			&i.CustomerDocumentNumber,
+			&i.TenantID,
+			&i.BranchID,
+			&i.PaymentMethod,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getBoletosCancelados = `-- name: GetBoletosCancelados :one
+SELECT 
+    SUM(boletos_cancelados) AS total_boletos_cancelados,
+    SUM(valor_cancelado) AS valor_total_cancelado
+FROM BranchDailyStats
+WHERE date = CURRENT_DATE
+`
+
+type GetBoletosCanceladosRow struct {
+	TotalBoletosCancelados int64
+	ValorTotalCancelado    int64
+}
+
+// Boletos cancelados por filial
+func (q *Queries) GetBoletosCancelados(ctx context.Context) (GetBoletosCanceladosRow, error) {
+	row := q.db.QueryRowContext(ctx, getBoletosCancelados)
+	var i GetBoletosCanceladosRow
+	err := row.Scan(&i.TotalBoletosCancelados, &i.ValorTotalCancelado)
+	return i, err
+}
+
+const getBoletosPorFilial = `-- name: GetBoletosPorFilial :many
+
+SELECT 
+    tenant_id,
+    branch_id,
+    SUM(total_boletos) AS total_boletos_gerados
+FROM BranchDailyStats
+WHERE date = CURRENT_DATE
+GROUP BY tenant_id, branch_id
+`
+
+type GetBoletosPorFilialRow struct {
+	TenantID            string
+	BranchID            string
+	TotalBoletosGerados int64
+}
+
+// ############################
+// # CONSULTAS EXTRAS #
+// ############################
+// Boletos gerados por filial
+func (q *Queries) GetBoletosPorFilial(ctx context.Context) ([]GetBoletosPorFilialRow, error) {
+	rows, err := q.db.QueryContext(ctx, getBoletosPorFilial)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetBoletosPorFilialRow
+	for rows.Next() {
+		var i GetBoletosPorFilialRow
+		if err := rows.Scan(&i.TenantID, &i.BranchID, &i.TotalBoletosGerados); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getCustomerClassificacaoRisco = `-- name: GetCustomerClassificacaoRisco :many
+SELECT 
+    customer_document_number,
+    CASE
+        WHEN SUM(total_dias_atraso) = 0 THEN 'Bom Pagador'
+        WHEN SUM(total_dias_atraso) <= 7 THEN 'Pagador Regular'
+        ELSE 'Mau Pagador'
+    END AS classificacao_risco
+FROM CustomerMonthlyStats
+WHERE month = DATE_TRUNC('month', CURRENT_DATE)
+GROUP BY customer_document_number
+`
+
+type GetCustomerClassificacaoRiscoRow struct {
+	CustomerDocumentNumber string
+	ClassificacaoRisco     string
+}
+
+// Classificação de risco por cliente
+func (q *Queries) GetCustomerClassificacaoRisco(ctx context.Context) ([]GetCustomerClassificacaoRiscoRow, error) {
+	rows, err := q.db.QueryContext(ctx, getCustomerClassificacaoRisco)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetCustomerClassificacaoRiscoRow
+	for rows.Next() {
+		var i GetCustomerClassificacaoRiscoRow
+		if err := rows.Scan(&i.CustomerDocumentNumber, &i.ClassificacaoRisco); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getCustomerConcentracaoReceita = `-- name: GetCustomerConcentracaoReceita :many
+WITH total_recebido AS (
+    SELECT SUM(valor_recebido) AS valor_total_recebido
+    FROM CustomerMonthlyStats
+    WHERE month = DATE_TRUNC('month', CURRENT_DATE)
+)
+SELECT 
+    customer_document_number,
+    SUM(valor_recebido)::DECIMAL / (SELECT valor_total_recebido FROM total_recebido) * 100 AS concentracao_receita
+FROM CustomerMonthlyStats
+WHERE month = DATE_TRUNC('month', CURRENT_DATE)
+GROUP BY customer_document_number
+`
+
+type GetCustomerConcentracaoReceitaRow struct {
+	CustomerDocumentNumber string
+	ConcentracaoReceita    int32
+}
+
+// Concentração de receita por cliente
+func (q *Queries) GetCustomerConcentracaoReceita(ctx context.Context) ([]GetCustomerConcentracaoReceitaRow, error) {
+	rows, err := q.db.QueryContext(ctx, getCustomerConcentracaoReceita)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetCustomerConcentracaoReceitaRow
+	for rows.Next() {
+		var i GetCustomerConcentracaoReceitaRow
+		if err := rows.Scan(&i.CustomerDocumentNumber, &i.ConcentracaoReceita); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getCustomerFrequencia = `-- name: GetCustomerFrequencia :many
+SELECT 
+    customer_document_number,
+    SUM(total_pagos) AS num_pagamentos
+FROM CustomerMonthlyStats
+WHERE month = DATE_TRUNC('month', CURRENT_DATE)
+GROUP BY customer_document_number
+`
+
+type GetCustomerFrequenciaRow struct {
+	CustomerDocumentNumber string
+	NumPagamentos          int64
+}
+
+// Frequência de pagamentos por cliente
+func (q *Queries) GetCustomerFrequencia(ctx context.Context) ([]GetCustomerFrequenciaRow, error) {
+	rows, err := q.db.QueryContext(ctx, getCustomerFrequencia)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetCustomerFrequenciaRow
+	for rows.Next() {
+		var i GetCustomerFrequenciaRow
+		if err := rows.Scan(&i.CustomerDocumentNumber, &i.NumPagamentos); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getCustomerMediaAtraso = `-- name: GetCustomerMediaAtraso :many
+SELECT 
+    customer_document_number,
+    SUM(total_dias_atraso)::DECIMAL / NULLIF(SUM(total_pagos), 0) AS tempo_medio_atraso
+FROM CustomerMonthlyStats
+WHERE month = DATE_TRUNC('month', CURRENT_DATE)
+GROUP BY customer_document_number
+`
+
+type GetCustomerMediaAtrasoRow struct {
+	CustomerDocumentNumber string
+	TempoMedioAtraso       int32
+}
+
+// Tempo médio de atraso por cliente
+func (q *Queries) GetCustomerMediaAtraso(ctx context.Context) ([]GetCustomerMediaAtrasoRow, error) {
+	rows, err := q.db.QueryContext(ctx, getCustomerMediaAtraso)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetCustomerMediaAtrasoRow
+	for rows.Next() {
+		var i GetCustomerMediaAtrasoRow
+		if err := rows.Scan(&i.CustomerDocumentNumber, &i.TempoMedioAtraso); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getCustomerPontualidade = `-- name: GetCustomerPontualidade :many
+
+SELECT 
+    customer_document_number,
+    (SUM(total_pagos) - SUM(boletos_atrasados))::DECIMAL / NULLIF(SUM(total_pagos), 0) * 100 AS pontualidade
+FROM CustomerMonthlyStats
+WHERE month = DATE_TRUNC('month', CURRENT_DATE)
+GROUP BY customer_document_number
+`
+
+type GetCustomerPontualidadeRow struct {
+	CustomerDocumentNumber string
+	Pontualidade           int32
+}
+
+// ############################
+// # QUERIES PARA CUSTOMERMONTHLYSTATS #
+// ############################
+// Pontualidade dos clientes
+func (q *Queries) GetCustomerPontualidade(ctx context.Context) ([]GetCustomerPontualidadeRow, error) {
+	rows, err := q.db.QueryContext(ctx, getCustomerPontualidade)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetCustomerPontualidadeRow
+	for rows.Next() {
+		var i GetCustomerPontualidadeRow
+		if err := rows.Scan(&i.CustomerDocumentNumber, &i.Pontualidade); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getCustomerTaxaAtraso = `-- name: GetCustomerTaxaAtraso :many
+SELECT 
+    customer_document_number,
+    SUM(boletos_atrasados)::DECIMAL / NULLIF(SUM(total_pagos), 0) * 100 AS taxa_atraso
+FROM CustomerMonthlyStats
+WHERE month = DATE_TRUNC('month', CURRENT_DATE)
+GROUP BY customer_document_number
+`
+
+type GetCustomerTaxaAtrasoRow struct {
+	CustomerDocumentNumber string
+	TaxaAtraso             int32
+}
+
+// Taxa de atraso por cliente
+func (q *Queries) GetCustomerTaxaAtraso(ctx context.Context) ([]GetCustomerTaxaAtrasoRow, error) {
+	rows, err := q.db.QueryContext(ctx, getCustomerTaxaAtraso)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetCustomerTaxaAtrasoRow
+	for rows.Next() {
+		var i GetCustomerTaxaAtrasoRow
+		if err := rows.Scan(&i.CustomerDocumentNumber, &i.TaxaAtraso); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getCustomerValorMedio = `-- name: GetCustomerValorMedio :many
+SELECT 
+    customer_document_number,
+    SUM(valor_emitido)::DECIMAL / NULLIF(SUM(total_boletos), 0) AS valor_medio
+FROM CustomerMonthlyStats
+WHERE month = DATE_TRUNC('month', CURRENT_DATE)
+GROUP BY customer_document_number
+`
+
+type GetCustomerValorMedioRow struct {
+	CustomerDocumentNumber string
+	ValorMedio             int32
+}
+
+// Valor médio dos boletos por cliente
+func (q *Queries) GetCustomerValorMedio(ctx context.Context) ([]GetCustomerValorMedioRow, error) {
+	rows, err := q.db.QueryContext(ctx, getCustomerValorMedio)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetCustomerValorMedioRow
+	for rows.Next() {
+		var i GetCustomerValorMedioRow
+		if err := rows.Scan(&i.CustomerDocumentNumber, &i.ValorMedio); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getLatestTransactions = `-- name: GetLatestTransactions :many
+SELECT id, bank_slip_uuid, status, created_at, updated_at, due_date, total, customer_document_number, tenant_id, branch_id, payment_method FROM Transaction
+ORDER BY created_at DESC
+LIMIT $1
+`
+
+func (q *Queries) GetLatestTransactions(ctx context.Context, limit int32) ([]Transaction, error) {
+	rows, err := q.db.QueryContext(ctx, getLatestTransactions, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Transaction
+	for rows.Next() {
+		var i Transaction
+		if err := rows.Scan(
+			&i.ID,
+			&i.BankSlipUuid,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DueDate,
+			&i.Total,
+			&i.CustomerDocumentNumber,
+			&i.TenantID,
+			&i.BranchID,
+			&i.PaymentMethod,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getMediaAtrasoPagamento = `-- name: GetMediaAtrasoPagamento :one
+SELECT 
+    SUM(total_dias_atraso)::DECIMAL / NULLIF(SUM(boletos_atrasados), 0) AS media_atraso
+FROM BranchDailyStats
+WHERE date = CURRENT_DATE
+`
+
+// Média de atraso no pagamento por filial
+func (q *Queries) GetMediaAtrasoPagamento(ctx context.Context) (int32, error) {
+	row := q.db.QueryRowContext(ctx, getMediaAtrasoPagamento)
+	var media_atraso int32
+	err := row.Scan(&media_atraso)
+	return media_atraso, err
+}
+
+const getPercentualBoletosAtrasados = `-- name: GetPercentualBoletosAtrasados :one
+SELECT 
+    SUM(boletos_atrasados)::DECIMAL / NULLIF(SUM(total_pagos), 0) * 100 AS percentual_atrasados
+FROM BranchDailyStats
+WHERE date = CURRENT_DATE
+`
+
+// Percentual de boletos atrasados por filial
+func (q *Queries) GetPercentualBoletosAtrasados(ctx context.Context) (int32, error) {
+	row := q.db.QueryRowContext(ctx, getPercentualBoletosAtrasados)
+	var percentual_atrasados int32
+	err := row.Scan(&percentual_atrasados)
+	return percentual_atrasados, err
+}
+
+const getTaxaPagamento = `-- name: GetTaxaPagamento :one
+SELECT 
+    SUM(total_pagos)::DECIMAL / NULLIF(SUM(total_boletos), 0) * 100 AS taxa_pagamento
+FROM BranchDailyStats
+WHERE date = CURRENT_DATE
+`
+
+// Taxa de pagamento por filial
+func (q *Queries) GetTaxaPagamento(ctx context.Context) (int32, error) {
+	row := q.db.QueryRowContext(ctx, getTaxaPagamento)
+	var taxa_pagamento int32
+	err := row.Scan(&taxa_pagamento)
+	return taxa_pagamento, err
+}
+
+const getTaxaPagamentoPorFilial = `-- name: GetTaxaPagamentoPorFilial :many
+SELECT 
+    tenant_id,
+    branch_id,
+    SUM(total_pagos)::DECIMAL / NULLIF(SUM(total_boletos), 0) * 100 AS taxa_pagamento
+FROM BranchDailyStats
+WHERE date = CURRENT_DATE
+GROUP BY tenant_id, branch_id
+`
+
+type GetTaxaPagamentoPorFilialRow struct {
+	TenantID      string
+	BranchID      string
+	TaxaPagamento int32
+}
+
+// Taxa de pagamento por filial
+func (q *Queries) GetTaxaPagamentoPorFilial(ctx context.Context) ([]GetTaxaPagamentoPorFilialRow, error) {
+	rows, err := q.db.QueryContext(ctx, getTaxaPagamentoPorFilial)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetTaxaPagamentoPorFilialRow
+	for rows.Next() {
+		var i GetTaxaPagamentoPorFilialRow
+		if err := rows.Scan(&i.TenantID, &i.BranchID, &i.TaxaPagamento); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getTempoMedioRecebimentoFilial = `-- name: GetTempoMedioRecebimentoFilial :many
+SELECT 
+    tenant_id,
+    branch_id,
+    SUM(total_dias_atraso)::DECIMAL / NULLIF(SUM(total_pagos), 0) AS tempo_medio_recebimento
+FROM BranchDailyStats
+WHERE date = CURRENT_DATE
+GROUP BY tenant_id, branch_id
+`
+
+type GetTempoMedioRecebimentoFilialRow struct {
+	TenantID              string
+	BranchID              string
+	TempoMedioRecebimento int32
+}
+
+// Tempo médio de recebimento por filial
+func (q *Queries) GetTempoMedioRecebimentoFilial(ctx context.Context) ([]GetTempoMedioRecebimentoFilialRow, error) {
+	rows, err := q.db.QueryContext(ctx, getTempoMedioRecebimentoFilial)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetTempoMedioRecebimentoFilialRow
+	for rows.Next() {
+		var i GetTempoMedioRecebimentoFilialRow
+		if err := rows.Scan(&i.TenantID, &i.BranchID, &i.TempoMedioRecebimento); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getTotalBoletosGerados = `-- name: GetTotalBoletosGerados :one
+
+SELECT SUM(total_boletos) AS total_boletos_gerados
+FROM BranchDailyStats
+WHERE date = CURRENT_DATE
+`
+
+// ############################
+// # QUERIES PARA BRANCHDAILYSTATS #
+// ############################
+// Total de boletos gerados por filial
+func (q *Queries) GetTotalBoletosGerados(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, getTotalBoletosGerados)
+	var total_boletos_gerados int64
+	err := row.Scan(&total_boletos_gerados)
+	return total_boletos_gerados, err
+}
+
+const getTotalBoletosPagos = `-- name: GetTotalBoletosPagos :one
+SELECT SUM(total_pagos) AS total_boletos_pagos
+FROM BranchDailyStats
+WHERE date = CURRENT_DATE
+`
+
+// Total de boletos pagos por filial
+func (q *Queries) GetTotalBoletosPagos(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, getTotalBoletosPagos)
+	var total_boletos_pagos int64
+	err := row.Scan(&total_boletos_pagos)
+	return total_boletos_pagos, err
+}
+
+const getTransactionByUUID = `-- name: GetTransactionByUUID :one
+SELECT id, bank_slip_uuid, status, created_at, updated_at, due_date, total, customer_document_number, tenant_id, branch_id, payment_method FROM Transaction
+WHERE id = $1
+`
+
+func (q *Queries) GetTransactionByUUID(ctx context.Context, id uuid.UUID) (Transaction, error) {
+	row := q.db.QueryRowContext(ctx, getTransactionByUUID, id)
 	var i Transaction
 	err := row.Scan(
 		&i.ID,
@@ -83,7 +680,7 @@ func (q *Queries) GetTransactionByID(ctx context.Context, id uuid.UUID) (Transac
 		&i.UpdatedAt,
 		&i.DueDate,
 		&i.Total,
-		&i.CustomerID,
+		&i.CustomerDocumentNumber,
 		&i.TenantID,
 		&i.BranchID,
 		&i.PaymentMethod,
@@ -91,17 +688,578 @@ func (q *Queries) GetTransactionByID(ctx context.Context, id uuid.UUID) (Transac
 	return i, err
 }
 
+const getTransactionsByBranchId = `-- name: GetTransactionsByBranchId :many
+SELECT id, bank_slip_uuid, status, created_at, updated_at, due_date, total, customer_document_number, tenant_id, branch_id, payment_method FROM Transaction
+WHERE branch_id = $1
+ORDER BY created_at DESC
+`
+
+func (q *Queries) GetTransactionsByBranchId(ctx context.Context, branchID string) ([]Transaction, error) {
+	rows, err := q.db.QueryContext(ctx, getTransactionsByBranchId, branchID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Transaction
+	for rows.Next() {
+		var i Transaction
+		if err := rows.Scan(
+			&i.ID,
+			&i.BankSlipUuid,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DueDate,
+			&i.Total,
+			&i.CustomerDocumentNumber,
+			&i.TenantID,
+			&i.BranchID,
+			&i.PaymentMethod,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getTransactionsByCustomerDocument = `-- name: GetTransactionsByCustomerDocument :many
+SELECT id, bank_slip_uuid, status, created_at, updated_at, due_date, total, customer_document_number, tenant_id, branch_id, payment_method FROM Transaction
+WHERE customer_document_number = $1
+ORDER BY created_at DESC
+`
+
+func (q *Queries) GetTransactionsByCustomerDocument(ctx context.Context, customerDocumentNumber string) ([]Transaction, error) {
+	rows, err := q.db.QueryContext(ctx, getTransactionsByCustomerDocument, customerDocumentNumber)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Transaction
+	for rows.Next() {
+		var i Transaction
+		if err := rows.Scan(
+			&i.ID,
+			&i.BankSlipUuid,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DueDate,
+			&i.Total,
+			&i.CustomerDocumentNumber,
+			&i.TenantID,
+			&i.BranchID,
+			&i.PaymentMethod,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getTransactionsByDateRange = `-- name: GetTransactionsByDateRange :many
+SELECT id, bank_slip_uuid, status, created_at, updated_at, due_date, total, customer_document_number, tenant_id, branch_id, payment_method FROM Transaction
+WHERE created_at BETWEEN $1 AND $2
+ORDER BY created_at DESC
+`
+
+type GetTransactionsByDateRangeParams struct {
+	CreatedAt   time.Time
+	CreatedAt_2 time.Time
+}
+
+func (q *Queries) GetTransactionsByDateRange(ctx context.Context, arg GetTransactionsByDateRangeParams) ([]Transaction, error) {
+	rows, err := q.db.QueryContext(ctx, getTransactionsByDateRange, arg.CreatedAt, arg.CreatedAt_2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Transaction
+	for rows.Next() {
+		var i Transaction
+		if err := rows.Scan(
+			&i.ID,
+			&i.BankSlipUuid,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DueDate,
+			&i.Total,
+			&i.CustomerDocumentNumber,
+			&i.TenantID,
+			&i.BranchID,
+			&i.PaymentMethod,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getTransactionsByStatus = `-- name: GetTransactionsByStatus :many
+SELECT id, bank_slip_uuid, status, created_at, updated_at, due_date, total, customer_document_number, tenant_id, branch_id, payment_method FROM Transaction
+WHERE status = $1
+ORDER BY created_at DESC
+`
+
+func (q *Queries) GetTransactionsByStatus(ctx context.Context, status NullTransactionStatus) ([]Transaction, error) {
+	rows, err := q.db.QueryContext(ctx, getTransactionsByStatus, status)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Transaction
+	for rows.Next() {
+		var i Transaction
+		if err := rows.Scan(
+			&i.ID,
+			&i.BankSlipUuid,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DueDate,
+			&i.Total,
+			&i.CustomerDocumentNumber,
+			&i.TenantID,
+			&i.BranchID,
+			&i.PaymentMethod,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getTransactionsByTenantId = `-- name: GetTransactionsByTenantId :many
+SELECT id, bank_slip_uuid, status, created_at, updated_at, due_date, total, customer_document_number, tenant_id, branch_id, payment_method FROM Transaction
+WHERE tenant_id = $1
+ORDER BY created_at DESC
+`
+
+func (q *Queries) GetTransactionsByTenantId(ctx context.Context, tenantID string) ([]Transaction, error) {
+	rows, err := q.db.QueryContext(ctx, getTransactionsByTenantId, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Transaction
+	for rows.Next() {
+		var i Transaction
+		if err := rows.Scan(
+			&i.ID,
+			&i.BankSlipUuid,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DueDate,
+			&i.Total,
+			&i.CustomerDocumentNumber,
+			&i.TenantID,
+			&i.BranchID,
+			&i.PaymentMethod,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getTransactionsCountByStatus = `-- name: GetTransactionsCountByStatus :many
+SELECT status, COUNT(*) as count
+FROM Transaction
+GROUP BY status
+`
+
+type GetTransactionsCountByStatusRow struct {
+	Status NullTransactionStatus
+	Count  int64
+}
+
+func (q *Queries) GetTransactionsCountByStatus(ctx context.Context) ([]GetTransactionsCountByStatusRow, error) {
+	rows, err := q.db.QueryContext(ctx, getTransactionsCountByStatus)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetTransactionsCountByStatusRow
+	for rows.Next() {
+		var i GetTransactionsCountByStatusRow
+		if err := rows.Scan(&i.Status, &i.Count); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getTransactionsTotalByBranchId = `-- name: GetTransactionsTotalByBranchId :one
+SELECT SUM(total) as total_amount
+FROM Transaction
+WHERE branch_id = $1
+`
+
+func (q *Queries) GetTransactionsTotalByBranchId(ctx context.Context, branchID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, getTransactionsTotalByBranchId, branchID)
+	var total_amount int64
+	err := row.Scan(&total_amount)
+	return total_amount, err
+}
+
+const getTransactionsTotalByTenantId = `-- name: GetTransactionsTotalByTenantId :one
+SELECT SUM(total) as total_amount
+FROM Transaction
+WHERE tenant_id = $1
+`
+
+func (q *Queries) GetTransactionsTotalByTenantId(ctx context.Context, tenantID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, getTransactionsTotalByTenantId, tenantID)
+	var total_amount int64
+	err := row.Scan(&total_amount)
+	return total_amount, err
+}
+
+const getValorMedioPorFilial = `-- name: GetValorMedioPorFilial :many
+SELECT 
+    tenant_id,
+    branch_id,
+    SUM(valor_emitido)::DECIMAL / NULLIF(SUM(total_boletos), 0) AS valor_medio
+FROM BranchDailyStats
+WHERE date = CURRENT_DATE
+GROUP BY tenant_id, branch_id
+`
+
+type GetValorMedioPorFilialRow struct {
+	TenantID   string
+	BranchID   string
+	ValorMedio int32
+}
+
+// Valor médio dos boletos por filial
+func (q *Queries) GetValorMedioPorFilial(ctx context.Context) ([]GetValorMedioPorFilialRow, error) {
+	rows, err := q.db.QueryContext(ctx, getValorMedioPorFilial)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetValorMedioPorFilialRow
+	for rows.Next() {
+		var i GetValorMedioPorFilialRow
+		if err := rows.Scan(&i.TenantID, &i.BranchID, &i.ValorMedio); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getValorTotalEmitido = `-- name: GetValorTotalEmitido :one
+SELECT SUM(valor_emitido) AS valor_total_emitido
+FROM BranchDailyStats
+WHERE date = CURRENT_DATE
+`
+
+// Valor total emitido por filial
+func (q *Queries) GetValorTotalEmitido(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, getValorTotalEmitido)
+	var valor_total_emitido int64
+	err := row.Scan(&valor_total_emitido)
+	return valor_total_emitido, err
+}
+
+const getValorTotalRecebido = `-- name: GetValorTotalRecebido :one
+SELECT SUM(valor_recebido) AS valor_total_recebido
+FROM BranchDailyStats
+WHERE date = CURRENT_DATE
+`
+
+// Valor total recebido por filial
+func (q *Queries) GetValorTotalRecebido(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, getValorTotalRecebido)
+	var valor_total_recebido int64
+	err := row.Scan(&valor_total_recebido)
+	return valor_total_recebido, err
+}
+
+const updateBranchDailyStats = `-- name: UpdateBranchDailyStats :exec
+INSERT INTO BranchDailyStats (
+    tenant_id,
+    branch_id,
+    date,
+    total_boletos,
+    total_pagos,
+    valor_emitido,
+    valor_recebido,
+    boletos_cancelados,
+    valor_cancelado,
+    boletos_atrasados,
+    total_dias_atraso
+) VALUES (
+    $1, -- tenant_id
+    $2, -- branch_id
+    $3, -- date
+    $4, -- delta_total_boletos
+    $5, -- delta_total_pagos
+    $6, -- delta_valor_emitido
+    $7, -- delta_valor_recebido
+    $8, -- delta_boletos_cancelados
+    $9, -- delta_valor_cancelado
+    $10, -- delta_boletos_atrasados
+    $11 -- delta_total_dias_atraso
+) ON CONFLICT (tenant_id, branch_id, date) DO UPDATE SET
+    total_boletos = BranchDailyStats.total_boletos + EXCLUDED.total_boletos,
+    total_pagos = BranchDailyStats.total_pagos + EXCLUDED.total_pagos,
+    valor_emitido = BranchDailyStats.valor_emitido + EXCLUDED.valor_emitido,
+    valor_recebido = BranchDailyStats.valor_recebido + EXCLUDED.valor_recebido,
+    boletos_cancelados = BranchDailyStats.boletos_cancelados + EXCLUDED.boletos_cancelados,
+    valor_cancelado = BranchDailyStats.valor_cancelado + EXCLUDED.valor_cancelado,
+    boletos_atrasados = BranchDailyStats.boletos_atrasados + EXCLUDED.boletos_atrasados,
+    total_dias_atraso = BranchDailyStats.total_dias_atraso + EXCLUDED.total_dias_atraso
+`
+
+type UpdateBranchDailyStatsParams struct {
+	TenantID          string
+	BranchID          string
+	Date              time.Time
+	TotalBoletos      sql.NullInt32
+	TotalPagos        sql.NullInt32
+	ValorEmitido      sql.NullString
+	ValorRecebido     sql.NullString
+	BoletosCancelados sql.NullInt32
+	ValorCancelado    sql.NullString
+	BoletosAtrasados  sql.NullInt32
+	TotalDiasAtraso   sql.NullString
+}
+
+func (q *Queries) UpdateBranchDailyStats(ctx context.Context, arg UpdateBranchDailyStatsParams) error {
+	_, err := q.db.ExecContext(ctx, updateBranchDailyStats,
+		arg.TenantID,
+		arg.BranchID,
+		arg.Date,
+		arg.TotalBoletos,
+		arg.TotalPagos,
+		arg.ValorEmitido,
+		arg.ValorRecebido,
+		arg.BoletosCancelados,
+		arg.ValorCancelado,
+		arg.BoletosAtrasados,
+		arg.TotalDiasAtraso,
+	)
+	return err
+}
+
+const updateCustomerMonthlyStats = `-- name: UpdateCustomerMonthlyStats :exec
+INSERT INTO CustomerMonthlyStats (
+    customer_document_number,
+    tenant_id,
+    month,
+    total_boletos,
+    total_pagos,
+    valor_emitido,
+    valor_recebido,
+    boletos_atrasados,
+    total_dias_atraso
+) VALUES (
+    $1, -- customer_document_number
+    $2, -- tenant_id
+    $3, -- month
+    $4, -- delta_total_boletos
+    $5, -- delta_total_pagos
+    $6, -- delta_valor_emitido
+    $7, -- delta_valor_recebido
+    $8, -- delta_boletos_atrasados
+    $9  -- delta_total_dias_atraso
+) ON CONFLICT (customer_document_number, month) DO UPDATE SET
+    total_boletos = CustomerMonthlyStats.total_boletos + EXCLUDED.total_boletos,
+    total_pagos = CustomerMonthlyStats.total_pagos + EXCLUDED.total_pagos,
+    valor_emitido = CustomerMonthlyStats.valor_emitido + EXCLUDED.valor_emitido,
+    valor_recebido = CustomerMonthlyStats.valor_recebido + EXCLUDED.valor_recebido,
+    boletos_atrasados = CustomerMonthlyStats.boletos_atrasados + EXCLUDED.boletos_atrasados,
+    total_dias_atraso = CustomerMonthlyStats.total_dias_atraso + EXCLUDED.total_dias_atraso
+`
+
+type UpdateCustomerMonthlyStatsParams struct {
+	CustomerDocumentNumber string
+	TenantID               string
+	Month                  time.Time
+	TotalBoletos           sql.NullInt32
+	TotalPagos             sql.NullInt32
+	ValorEmitido           sql.NullString
+	ValorRecebido          sql.NullString
+	BoletosAtrasados       sql.NullInt32
+	TotalDiasAtraso        sql.NullString
+}
+
+func (q *Queries) UpdateCustomerMonthlyStats(ctx context.Context, arg UpdateCustomerMonthlyStatsParams) error {
+	_, err := q.db.ExecContext(ctx, updateCustomerMonthlyStats,
+		arg.CustomerDocumentNumber,
+		arg.TenantID,
+		arg.Month,
+		arg.TotalBoletos,
+		arg.TotalPagos,
+		arg.ValorEmitido,
+		arg.ValorRecebido,
+		arg.BoletosAtrasados,
+		arg.TotalDiasAtraso,
+	)
+	return err
+}
+
+const updateTransaction = `-- name: UpdateTransaction :exec
+UPDATE Transaction
+SET
+    status = COALESCE($1, status),
+    updated_at = COALESCE($2, updated_at),
+    due_date = COALESCE($3, due_date),
+    total = COALESCE($4, total),
+    payment_method = COALESCE($5, payment_method)
+WHERE id = $6
+`
+
+type UpdateTransactionParams struct {
+	Status        NullTransactionStatus
+	UpdatedAt     time.Time
+	DueDate       time.Time
+	Total         string
+	PaymentMethod NullPaymentMethod
+	ID            uuid.UUID
+}
+
+func (q *Queries) UpdateTransaction(ctx context.Context, arg UpdateTransactionParams) error {
+	_, err := q.db.ExecContext(ctx, updateTransaction,
+		arg.Status,
+		arg.UpdatedAt,
+		arg.DueDate,
+		arg.Total,
+		arg.PaymentMethod,
+		arg.ID,
+	)
+	return err
+}
+
 const updateTransactionStatus = `-- name: UpdateTransactionStatus :exec
-UPDATE transaction SET status = $2, updated_at = $3 WHERE id = $1
+UPDATE Transaction
+SET status = $1, updated_at = $2
+WHERE id = $3
 `
 
 type UpdateTransactionStatusParams struct {
-	ID        uuid.UUID
 	Status    NullTransactionStatus
 	UpdatedAt time.Time
+	ID        uuid.UUID
 }
 
 func (q *Queries) UpdateTransactionStatus(ctx context.Context, arg UpdateTransactionStatusParams) error {
-	_, err := q.db.ExecContext(ctx, updateTransactionStatus, arg.ID, arg.Status, arg.UpdatedAt)
+	_, err := q.db.ExecContext(ctx, updateTransactionStatus, arg.Status, arg.UpdatedAt, arg.ID)
 	return err
+}
+
+const upsertTransaction = `-- name: UpsertTransaction :one
+INSERT INTO Transaction (
+    id, bank_slip_uuid, status, created_at, updated_at, due_date, total, customer_document_number, tenant_id, branch_id, payment_method
+) VALUES (
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
+)
+ON CONFLICT (id) DO UPDATE
+SET
+    bank_slip_uuid = EXCLUDED.bank_slip_uuid,
+    status = EXCLUDED.status,
+    updated_at = EXCLUDED.updated_at,
+    due_date = EXCLUDED.due_date,
+    total = EXCLUDED.total,
+    customer_document_number = EXCLUDED.customer_document_number,
+    tenant_id = EXCLUDED.tenant_id,
+    branch_id = EXCLUDED.branch_id,
+    payment_method = EXCLUDED.payment_method
+RETURNING id, bank_slip_uuid, status, created_at, updated_at, due_date, total, customer_document_number, tenant_id, branch_id, payment_method
+`
+
+type UpsertTransactionParams struct {
+	ID                     uuid.UUID
+	BankSlipUuid           uuid.NullUUID
+	Status                 NullTransactionStatus
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
+	DueDate                time.Time
+	Total                  string
+	CustomerDocumentNumber string
+	TenantID               string
+	BranchID               string
+	PaymentMethod          NullPaymentMethod
+}
+
+func (q *Queries) UpsertTransaction(ctx context.Context, arg UpsertTransactionParams) (Transaction, error) {
+	row := q.db.QueryRowContext(ctx, upsertTransaction,
+		arg.ID,
+		arg.BankSlipUuid,
+		arg.Status,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+		arg.DueDate,
+		arg.Total,
+		arg.CustomerDocumentNumber,
+		arg.TenantID,
+		arg.BranchID,
+		arg.PaymentMethod,
+	)
+	var i Transaction
+	err := row.Scan(
+		&i.ID,
+		&i.BankSlipUuid,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DueDate,
+		&i.Total,
+		&i.CustomerDocumentNumber,
+		&i.TenantID,
+		&i.BranchID,
+		&i.PaymentMethod,
+	)
+	return i, err
 }

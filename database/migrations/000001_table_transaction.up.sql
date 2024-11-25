@@ -19,7 +19,7 @@ CREATE TABLE Transaction (
     updated_at TIMESTAMP NOT NULL,                       -- Data de atualização da transação
     due_date TIMESTAMP NOT NULL,                         -- Data de vencimento da transação
     total NUMERIC NOT NULL,                              -- Valor total da transação
-    customer_id VARCHAR NOT NULL,                        -- ID do cliente
+    customer_document_number VARCHAR NOT NULL,                        -- ID do cliente
     tenant_id VARCHAR NOT NULL,                          -- ID do locatário
     branch_id VARCHAR NOT NULL,                          -- ID da filial
     payment_method payment_method,                       -- Método de pagamento (ENUM)

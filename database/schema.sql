@@ -49,6 +49,92 @@ SET default_tablespace = '';
 SET default_table_access_method = heap;
 
 --
+-- Name: branchdailystats; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.branchdailystats (
+    id integer NOT NULL,
+    tenant_id character varying NOT NULL,
+    branch_id character varying NOT NULL,
+    date date NOT NULL,
+    total_boletos integer DEFAULT 0,
+    total_pagos integer DEFAULT 0,
+    valor_emitido numeric(20,2) DEFAULT 0.00,
+    valor_recebido numeric(20,2) DEFAULT 0.00,
+    boletos_cancelados integer DEFAULT 0,
+    valor_cancelado numeric(20,2) DEFAULT 0.00,
+    boletos_atrasados integer DEFAULT 0,
+    total_dias_atraso numeric(20,2) DEFAULT 0.00
+);
+
+
+ALTER TABLE public.branchdailystats OWNER TO postgres;
+
+--
+-- Name: branchdailystats_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.branchdailystats_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.branchdailystats_id_seq OWNER TO postgres;
+
+--
+-- Name: branchdailystats_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+--
+
+ALTER SEQUENCE public.branchdailystats_id_seq OWNED BY public.branchdailystats.id;
+
+
+--
+-- Name: customermonthlystats; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.customermonthlystats (
+    id integer NOT NULL,
+    customer_document_number character varying NOT NULL,
+    tenant_id character varying NOT NULL,
+    month date NOT NULL,
+    total_boletos integer DEFAULT 0,
+    total_pagos integer DEFAULT 0,
+    valor_emitido numeric(20,2) DEFAULT 0.00,
+    valor_recebido numeric(20,2) DEFAULT 0.00,
+    boletos_atrasados integer DEFAULT 0,
+    total_dias_atraso numeric(20,2) DEFAULT 0.00
+);
+
+
+ALTER TABLE public.customermonthlystats OWNER TO postgres;
+
+--
+-- Name: customermonthlystats_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.customermonthlystats_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.customermonthlystats_id_seq OWNER TO postgres;
+
+--
+-- Name: customermonthlystats_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+--
+
+ALTER SEQUENCE public.customermonthlystats_id_seq OWNED BY public.customermonthlystats.id;
+
+
+--
 -- Name: schema_migrations; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -72,7 +158,7 @@ CREATE TABLE public.transaction (
     updated_at timestamp without time zone NOT NULL,
     due_date timestamp without time zone NOT NULL,
     total numeric NOT NULL,
-    customer_id character varying NOT NULL,
+    customer_document_number character varying NOT NULL,
     tenant_id character varying NOT NULL,
     branch_id character varying NOT NULL,
     payment_method public.payment_method,
@@ -82,6 +168,36 @@ CREATE TABLE public.transaction (
 
 
 ALTER TABLE public.transaction OWNER TO postgres;
+
+--
+-- Name: branchdailystats id; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.branchdailystats ALTER COLUMN id SET DEFAULT nextval('public.branchdailystats_id_seq'::regclass);
+
+
+--
+-- Name: customermonthlystats id; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.customermonthlystats ALTER COLUMN id SET DEFAULT nextval('public.customermonthlystats_id_seq'::regclass);
+
+
+--
+-- Name: branchdailystats branchdailystats_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.branchdailystats
+    ADD CONSTRAINT branchdailystats_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: customermonthlystats customermonthlystats_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.customermonthlystats
+    ADD CONSTRAINT customermonthlystats_pkey PRIMARY KEY (id);
+
 
 --
 -- Name: schema_migrations schema_migrations_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
@@ -97,6 +213,22 @@ ALTER TABLE ONLY public.schema_migrations
 
 ALTER TABLE ONLY public.transaction
     ADD CONSTRAINT transaction_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: customermonthlystats unique_customer_month; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.customermonthlystats
+    ADD CONSTRAINT unique_customer_month UNIQUE (customer_document_number, month);
+
+
+--
+-- Name: branchdailystats unique_tenant_branch_date; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.branchdailystats
+    ADD CONSTRAINT unique_tenant_branch_date UNIQUE (tenant_id, branch_id, date);
 
 
 --

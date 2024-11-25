@@ -77,21 +77,69 @@ A estrutura de pastas deste boilerplate é baseada na Clean Architecture, que pr
 - **web/**: Contém o framework web (pode ser gin, echo, etc.) e o roteamento HTTP.
 
 ## Como Usar
+## Como Gerar Entidades
 
-1. Clone o repositório:
+Para gerar as entidades e o código relacionado às consultas SQL, siga os passos abaixo:
+
+1. **Criar uma Nova Migração**
+
+      Se você precisa criar novas tabelas ou modificar o esquema do banco de dados, crie uma nova migração:
+
       ```sh
-      git clone https://github.com/seu-usuario/boilerplate-go.git
+      make migrate-new name=create_invoices
       ```
 
-2. Navegue até o diretório do projeto:
+      Isso criará dois arquivos no diretório de migrações:
+
+      - `000001_create_invoices.up.sql`: Para aplicar a migração.
+      - `000001_create_invoices.down.sql`: Para reverter a migração.
+
+      Preencha esses arquivos com as instruções SQL necessárias.
+
+2. **Aplicar as Migrações**
+
+      Após definir o conteúdo das migrações, aplique-as ao banco de dados:
+
       ```sh
-      cd boilerplate-go
+      make migrate-up
       ```
 
-3. Execute a aplicação:
+3. **Atualizar o Schema Dump (Opcional)**
+
+      Gere um arquivo `schema.sql` com o estado atual do esquema do banco de dados:
+
       ```sh
-      go run cmd/app/main.go
+      make schema-dump
       ```
+
+      Isso é útil para manter um histórico atualizado do esquema.
+
+4. **Escrever as Consultas SQL**
+
+      No diretório adequado (por exemplo, `internal/<feature>/repository/queries/`), crie os arquivos `.sql` com as consultas necessárias.
+
+      Exemplo:
+
+      ```sql
+      -- name: CreateInvoice :one
+      INSERT INTO invoices (id, amount, due_date, status, created_at, updated_at, customer_id, description)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      RETURNING *;
+
+      -- name: GetInvoiceByID :one
+      SELECT * FROM invoices WHERE id = $1;
+      ```
+
+5. **Gerar Código com sqlc**
+
+      Use o `sqlc` para gerar o código Go a partir das consultas SQL:
+
+      ```sh
+      make sqlc-generate
+      ```
+
+      O código gerado será colocado no diretório especificado no arquivo de configuração `sqlc.yaml`, como `internal/<feature>/repository/`.
+
 
 ## Contribuição
 

@@ -5,6 +5,7 @@
 package db
 
 import (
+	"database/sql"
 	"database/sql/driver"
 	"fmt"
 	"time"
@@ -99,21 +100,49 @@ func (ns NullTransactionStatus) Value() (driver.Value, error) {
 	return string(ns.TransactionStatus), nil
 }
 
+type Branchdailystat struct {
+	ID                int32
+	TenantID          string
+	BranchID          string
+	Date              time.Time
+	TotalBoletos      sql.NullInt32
+	TotalPagos        sql.NullInt32
+	ValorEmitido      sql.NullString
+	ValorRecebido     sql.NullString
+	BoletosCancelados sql.NullInt32
+	ValorCancelado    sql.NullString
+	BoletosAtrasados  sql.NullInt32
+	TotalDiasAtraso   sql.NullString
+}
+
+type Customermonthlystat struct {
+	ID                     int32
+	CustomerDocumentNumber string
+	TenantID               string
+	Month                  time.Time
+	TotalBoletos           sql.NullInt32
+	TotalPagos             sql.NullInt32
+	ValorEmitido           sql.NullString
+	ValorRecebido          sql.NullString
+	BoletosAtrasados       sql.NullInt32
+	TotalDiasAtraso        sql.NullString
+}
+
 type SchemaMigration struct {
 	Version int64
 	Dirty   bool
 }
 
 type Transaction struct {
-	ID            uuid.UUID
-	BankSlipUuid  uuid.NullUUID
-	Status        NullTransactionStatus
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
-	DueDate       time.Time
-	Total         string
-	CustomerID    string
-	TenantID      string
-	BranchID      string
-	PaymentMethod NullPaymentMethod
+	ID                     uuid.UUID
+	BankSlipUuid           uuid.NullUUID
+	Status                 NullTransactionStatus
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
+	DueDate                time.Time
+	Total                  string
+	CustomerDocumentNumber string
+	TenantID               string
+	BranchID               string
+	PaymentMethod          NullPaymentMethod
 }

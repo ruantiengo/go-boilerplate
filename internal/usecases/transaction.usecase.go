@@ -2,8 +2,8 @@ package usecase
 
 import (
 	"context"
-	"ruantiengo/internal/transaction/domain"
-	"ruantiengo/internal/transaction/repository"
+	"ruantiengo/internal/domain"
+	"ruantiengo/internal/repository"
 )
 
 type ProcessTransaction struct {
@@ -15,5 +15,5 @@ func NewProcessTransaction(repo repository.TransactionRepository) *ProcessTransa
 }
 
 func (pt *ProcessTransaction) Execute(ctx context.Context, transaction domain.Transaction) error {
-	return pt.repo.Upsert(ctx, transaction)
+	return pt.repo.Create(ctx, transaction)
 }
