@@ -12,173 +12,96 @@ import (
 	"github.com/google/uuid"
 )
 
-const createTransaction = `-- name: CreateTransaction :exec
-INSERT INTO Transaction (bank_slip_uuid, status, created_at, updated_at, payment_method)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING bank_slip_uuid, status, created_at, updated_at, payment_method
+const createTransaction = `-- name: CreateTransaction :one
+INSERT INTO transaction (id, status, created_at, updated_at, due_date, total, customer_id, tenant_id, branch_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+RETURNING id, bank_slip_uuid, status, created_at, updated_at, due_date, total, customer_id, tenant_id, branch_id, payment_method
 `
 
 type CreateTransactionParams struct {
-	BankSlipUuid  uuid.UUID
-	Status        NullTransactionStatus
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
-	PaymentMethod NullPaymentMethod
+	ID         uuid.UUID
+	Status     NullTransactionStatus
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+	DueDate    time.Time
+	Total      string
+	CustomerID string
+	TenantID   string
+	BranchID   string
 }
 
-func (q *Queries) CreateTransaction(ctx context.Context, arg CreateTransactionParams) error {
-	_, err := q.db.ExecContext(ctx, createTransaction,
-		arg.BankSlipUuid,
+func (q *Queries) CreateTransaction(ctx context.Context, arg CreateTransactionParams) (Transaction, error) {
+	row := q.db.QueryRowContext(ctx, createTransaction,
+		arg.ID,
 		arg.Status,
 		arg.CreatedAt,
 		arg.UpdatedAt,
-		arg.PaymentMethod,
+		arg.DueDate,
+		arg.Total,
+		arg.CustomerID,
+		arg.TenantID,
+		arg.BranchID,
 	)
-	return err
+	var i Transaction
+	err := row.Scan(
+		&i.ID,
+		&i.BankSlipUuid,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DueDate,
+		&i.Total,
+		&i.CustomerID,
+		&i.TenantID,
+		&i.BranchID,
+		&i.PaymentMethod,
+	)
+	return i, err
 }
 
 const deleteTransaction = `-- name: DeleteTransaction :exec
-
-DELETE FROM Transaction
-WHERE bank_slip_uuid = $1
+DELETE FROM transaction WHERE id = $1
 `
 
-// Added missing semicolon here
-func (q *Queries) DeleteTransaction(ctx context.Context, bankSlipUuid uuid.UUID) error {
-	_, err := q.db.ExecContext(ctx, deleteTransaction, bankSlipUuid)
+func (q *Queries) DeleteTransaction(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.ExecContext(ctx, deleteTransaction, id)
 	return err
 }
 
-const getAllTransactions = `-- name: GetAllTransactions :many
-SELECT bank_slip_uuid, status, created_at, updated_at, payment_method
-FROM Transaction
+const getTransactionByID = `-- name: GetTransactionByID :one
+SELECT id, bank_slip_uuid, status, created_at, updated_at, due_date, total, customer_id, tenant_id, branch_id, payment_method FROM transaction WHERE id = $1
 `
 
-func (q *Queries) GetAllTransactions(ctx context.Context) ([]Transaction, error) {
-	rows, err := q.db.QueryContext(ctx, getAllTransactions)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []Transaction
-	for rows.Next() {
-		var i Transaction
-		if err := rows.Scan(
-			&i.BankSlipUuid,
-			&i.Status,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.PaymentMethod,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const getTransactionByUUID = `-- name: GetTransactionByUUID :one
-SELECT bank_slip_uuid, status, created_at, updated_at, payment_method
-FROM Transaction
-WHERE bank_slip_uuid = $1
-`
-
-func (q *Queries) GetTransactionByUUID(ctx context.Context, bankSlipUuid uuid.UUID) (Transaction, error) {
-	row := q.db.QueryRowContext(ctx, getTransactionByUUID, bankSlipUuid)
+func (q *Queries) GetTransactionByID(ctx context.Context, id uuid.UUID) (Transaction, error) {
+	row := q.db.QueryRowContext(ctx, getTransactionByID, id)
 	var i Transaction
 	err := row.Scan(
+		&i.ID,
 		&i.BankSlipUuid,
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DueDate,
+		&i.Total,
+		&i.CustomerID,
+		&i.TenantID,
+		&i.BranchID,
 		&i.PaymentMethod,
 	)
 	return i, err
-}
-
-const updateTransaction = `-- name: UpdateTransaction :exec
-UPDATE Transaction
-SET
-    status = COALESCE($1, status),
-    updated_at = COALESCE($2, updated_at),
-    payment_method = COALESCE($3, payment_method)
-WHERE bank_slip_uuid = $4
-`
-
-type UpdateTransactionParams struct {
-	Status        NullTransactionStatus
-	UpdatedAt     time.Time
-	PaymentMethod NullPaymentMethod
-	BankSlipUuid  uuid.UUID
-}
-
-func (q *Queries) UpdateTransaction(ctx context.Context, arg UpdateTransactionParams) error {
-	_, err := q.db.ExecContext(ctx, updateTransaction,
-		arg.Status,
-		arg.UpdatedAt,
-		arg.PaymentMethod,
-		arg.BankSlipUuid,
-	)
-	return err
 }
 
 const updateTransactionStatus = `-- name: UpdateTransactionStatus :exec
-UPDATE Transaction
-SET status = $1, updated_at = $2
-WHERE bank_slip_uuid = $3
+UPDATE transaction SET status = $2, updated_at = $3 WHERE id = $1
 `
 
 type UpdateTransactionStatusParams struct {
-	Status       NullTransactionStatus
-	UpdatedAt    time.Time
-	BankSlipUuid uuid.UUID
+	ID        uuid.UUID
+	Status    NullTransactionStatus
+	UpdatedAt time.Time
 }
 
 func (q *Queries) UpdateTransactionStatus(ctx context.Context, arg UpdateTransactionStatusParams) error {
-	_, err := q.db.ExecContext(ctx, updateTransactionStatus, arg.Status, arg.UpdatedAt, arg.BankSlipUuid)
+	_, err := q.db.ExecContext(ctx, updateTransactionStatus, arg.ID, arg.Status, arg.UpdatedAt)
 	return err
-}
-
-const upsertTransaction = `-- name: UpsertTransaction :one
-INSERT INTO Transaction (bank_slip_uuid, status, created_at, updated_at, payment_method)
-VALUES ($1, $2, $3, $4, $5)
-ON CONFLICT (bank_slip_uuid) DO UPDATE
-SET
-    status = EXCLUDED.status,
-    updated_at = EXCLUDED.updated_at,
-    payment_method = EXCLUDED.payment_method
-RETURNING bank_slip_uuid, status, created_at, updated_at, payment_method
-`
-
-type UpsertTransactionParams struct {
-	BankSlipUuid  uuid.UUID
-	Status        NullTransactionStatus
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
-	PaymentMethod NullPaymentMethod
-}
-
-func (q *Queries) UpsertTransaction(ctx context.Context, arg UpsertTransactionParams) (Transaction, error) {
-	row := q.db.QueryRowContext(ctx, upsertTransaction,
-		arg.BankSlipUuid,
-		arg.Status,
-		arg.CreatedAt,
-		arg.UpdatedAt,
-		arg.PaymentMethod,
-	)
-	var i Transaction
-	err := row.Scan(
-		&i.BankSlipUuid,
-		&i.Status,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.PaymentMethod,
-	)
-	return i, err
 }

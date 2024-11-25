@@ -1,40 +1,13 @@
--- name: CreateTransaction :exec
-INSERT INTO Transaction (bank_slip_uuid, status, created_at, updated_at, payment_method)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING bank_slip_uuid, status, created_at, updated_at, payment_method;
+-- name: CreateTransaction :one
+INSERT INTO transaction (id, status, created_at, updated_at, due_date, total, customer_id, tenant_id, branch_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+RETURNING *;
 
--- name: GetTransactionByUUID :one
-SELECT bank_slip_uuid, status, created_at, updated_at, payment_method
-FROM Transaction
-WHERE bank_slip_uuid = $1;
+-- name: GetTransactionByID :one
+SELECT * FROM transaction WHERE id = $1;
 
 -- name: UpdateTransactionStatus :exec
-UPDATE Transaction
-SET status = $1, updated_at = $2
-WHERE bank_slip_uuid = $3;
-    
--- name: UpdateTransaction :exec
-UPDATE Transaction
-SET
-    status = COALESCE($1, status),
-    updated_at = COALESCE($2, updated_at),
-    payment_method = COALESCE($3, payment_method)
-WHERE bank_slip_uuid = $4;  -- Added missing semicolon here
+UPDATE transaction SET status = $2, updated_at = $3 WHERE id = $1;
 
 -- name: DeleteTransaction :exec
-DELETE FROM Transaction
-WHERE bank_slip_uuid = $1;
-
--- name: GetAllTransactions :many
-SELECT bank_slip_uuid, status, created_at, updated_at, payment_method
-FROM Transaction;
-
--- name: UpsertTransaction :one
-INSERT INTO Transaction (bank_slip_uuid, status, created_at, updated_at, payment_method)
-VALUES ($1, $2, $3, $4, $5)
-ON CONFLICT (bank_slip_uuid) DO UPDATE
-SET
-    status = EXCLUDED.status,
-    updated_at = EXCLUDED.updated_at,
-    payment_method = EXCLUDED.payment_method
-RETURNING bank_slip_uuid, status, created_at, updated_at, payment_method;
+DELETE FROM transaction WHERE id = $1;

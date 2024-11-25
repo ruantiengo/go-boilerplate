@@ -105,9 +105,15 @@ type SchemaMigration struct {
 }
 
 type Transaction struct {
-	BankSlipUuid  uuid.UUID
+	ID            uuid.UUID
+	BankSlipUuid  uuid.NullUUID
 	Status        NullTransactionStatus
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
+	DueDate       time.Time
+	Total         string
+	CustomerID    string
+	TenantID      string
+	BranchID      string
 	PaymentMethod NullPaymentMethod
 }

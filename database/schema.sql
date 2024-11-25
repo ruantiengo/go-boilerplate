@@ -3,7 +3,7 @@
 --
 
 -- Dumped from database version 17.0 (Debian 17.0-1.pgdg120+1)
--- Dumped by pg_dump version 17.1 (Ubuntu 17.1-1.pgdg22.04+1)
+-- Dumped by pg_dump version 17.2 (Ubuntu 17.2-1.pgdg24.04+1)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -65,10 +65,16 @@ ALTER TABLE public.schema_migrations OWNER TO postgres;
 --
 
 CREATE TABLE public.transaction (
-    bank_slip_uuid uuid NOT NULL,
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    bank_slip_uuid uuid,
     status public.transaction_status,
     created_at timestamp without time zone NOT NULL,
     updated_at timestamp without time zone NOT NULL,
+    due_date timestamp without time zone NOT NULL,
+    total numeric NOT NULL,
+    customer_id character varying NOT NULL,
+    tenant_id character varying NOT NULL,
+    branch_id character varying NOT NULL,
     payment_method public.payment_method,
     CONSTRAINT check_payment_method CHECK ((payment_method = ANY (ARRAY['bill'::public.payment_method, 'pix'::public.payment_method, 'credit_card'::public.payment_method]))),
     CONSTRAINT check_status CHECK ((status = ANY (ARRAY['pending'::public.transaction_status, 'cancelled'::public.transaction_status, 'expired'::public.transaction_status, 'approved'::public.transaction_status])))
@@ -90,7 +96,7 @@ ALTER TABLE ONLY public.schema_migrations
 --
 
 ALTER TABLE ONLY public.transaction
-    ADD CONSTRAINT transaction_pkey PRIMARY KEY (bank_slip_uuid);
+    ADD CONSTRAINT transaction_pkey PRIMARY KEY (id);
 
 
 --
