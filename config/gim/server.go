@@ -2,6 +2,7 @@ package server_config
 
 import (
 	"context"
+	"database/sql"
 	"net/http"
 	"os"
 	"os/signal"
@@ -9,6 +10,9 @@ import (
 	"time"
 
 	logger "ruantiengo/config/log"
+	"ruantiengo/internal/handler"
+	"ruantiengo/internal/infra"
+	usecase "ruantiengo/internal/usecases"
 
 	"github.com/gin-gonic/gin"
 )
@@ -24,14 +28,18 @@ func NewServer(router *gin.Engine) *Server {
 	}
 }
 
-func (s *Server) SetupRoutes() {
+func (s *Server) SetupRoutes(db *sql.DB) {
 	s.router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"status": "OK",
 		})
 	})
 
-	// Add more routes here
+	serviceInfra := infra.NewPostgresStatsRepository(db)
+	serviceUsecase := usecase.NewUpdateStatistics(serviceInfra)
+
+	handlerStatistics := handler.NewStatisticsHandler(serviceUsecase)
+	s.router.GET("/statistics", handlerStatistics.GetCompanyStatistics)
 }
 
 func (s *Server) Start() {

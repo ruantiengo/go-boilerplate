@@ -3,7 +3,7 @@
 --
 
 -- Dumped from database version 17.0 (Debian 17.0-1.pgdg120+1)
--- Dumped by pg_dump version 17.2 (Ubuntu 17.2-1.pgdg24.04+1)
+-- Dumped by pg_dump version 17.1 (Ubuntu 17.1-1.pgdg22.04+1)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -59,12 +59,12 @@ CREATE TABLE public.branchdailystats (
     date date NOT NULL,
     total_boletos integer DEFAULT 0,
     total_pagos integer DEFAULT 0,
-    valor_emitido numeric(20,2) DEFAULT 0.00,
-    valor_recebido numeric(20,2) DEFAULT 0.00,
+    valor_emitido double precision DEFAULT 0.00,
+    valor_recebido double precision DEFAULT 0.00,
     boletos_cancelados integer DEFAULT 0,
-    valor_cancelado numeric(20,2) DEFAULT 0.00,
+    valor_cancelado double precision DEFAULT 0.00,
     boletos_atrasados integer DEFAULT 0,
-    total_dias_atraso numeric(20,2) DEFAULT 0.00
+    total_dias_atraso double precision DEFAULT 0.00
 );
 
 
@@ -103,10 +103,10 @@ CREATE TABLE public.customermonthlystats (
     month date NOT NULL,
     total_boletos integer DEFAULT 0,
     total_pagos integer DEFAULT 0,
-    valor_emitido numeric(20,2) DEFAULT 0.00,
-    valor_recebido numeric(20,2) DEFAULT 0.00,
+    valor_emitido double precision DEFAULT 0.00,
+    valor_recebido double precision DEFAULT 0.00,
     boletos_atrasados integer DEFAULT 0,
-    total_dias_atraso numeric(20,2) DEFAULT 0.00
+    total_dias_atraso double precision DEFAULT 0.00
 );
 
 

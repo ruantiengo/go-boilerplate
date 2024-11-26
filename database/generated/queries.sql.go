@@ -17,15 +17,14 @@ const createTransaction = `-- name: CreateTransaction :one
 
 
 INSERT INTO Transaction (
-    id, bank_slip_uuid, status, created_at, updated_at, due_date, total, customer_document_number, tenant_id, branch_id, payment_method
+    bank_slip_uuid, status, created_at, updated_at, due_date, total, customer_document_number, tenant_id, branch_id, payment_method
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
 )
 RETURNING id, bank_slip_uuid, status, created_at, updated_at, due_date, total, customer_document_number, tenant_id, branch_id, payment_method
 `
 
 type CreateTransactionParams struct {
-	ID                     uuid.UUID
 	BankSlipUuid           uuid.NullUUID
 	Status                 NullTransactionStatus
 	CreatedAt              time.Time
@@ -44,7 +43,6 @@ type CreateTransactionParams struct {
 // Criação de uma nova transação
 func (q *Queries) CreateTransaction(ctx context.Context, arg CreateTransactionParams) (Transaction, error) {
 	row := q.db.QueryRowContext(ctx, createTransaction,
-		arg.ID,
 		arg.BankSlipUuid,
 		arg.Status,
 		arg.CreatedAt,
@@ -185,6 +183,135 @@ func (q *Queries) GetBoletosPorFilial(ctx context.Context) ([]GetBoletosPorFilia
 		return nil, err
 	}
 	return items, nil
+}
+
+const getBranchDailyStats = `-- name: GetBranchDailyStats :many
+SELECT
+    branch_id,
+    date,
+    total_boletos,
+    total_pagos,
+    valor_emitido,
+    valor_recebido,
+    boletos_cancelados,
+    valor_cancelado,
+    boletos_atrasados,
+    total_dias_atraso
+FROM
+    branchdailystats
+WHERE
+    tenant_id = $1
+    AND branch_id = $2
+    AND date BETWEEN $3 AND $4
+`
+
+type GetBranchDailyStatsParams struct {
+	TenantID string
+	BranchID string
+	Date     time.Time
+	Date_2   time.Time
+}
+
+type GetBranchDailyStatsRow struct {
+	BranchID          string
+	Date              time.Time
+	TotalBoletos      sql.NullInt32
+	TotalPagos        sql.NullInt32
+	ValorEmitido      sql.NullFloat64
+	ValorRecebido     sql.NullFloat64
+	BoletosCancelados sql.NullInt32
+	ValorCancelado    sql.NullFloat64
+	BoletosAtrasados  sql.NullInt32
+	TotalDiasAtraso   sql.NullFloat64
+}
+
+func (q *Queries) GetBranchDailyStats(ctx context.Context, arg GetBranchDailyStatsParams) ([]GetBranchDailyStatsRow, error) {
+	rows, err := q.db.QueryContext(ctx, getBranchDailyStats,
+		arg.TenantID,
+		arg.BranchID,
+		arg.Date,
+		arg.Date_2,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetBranchDailyStatsRow
+	for rows.Next() {
+		var i GetBranchDailyStatsRow
+		if err := rows.Scan(
+			&i.BranchID,
+			&i.Date,
+			&i.TotalBoletos,
+			&i.TotalPagos,
+			&i.ValorEmitido,
+			&i.ValorRecebido,
+			&i.BoletosCancelados,
+			&i.ValorCancelado,
+			&i.BoletosAtrasados,
+			&i.TotalDiasAtraso,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getCompanyStatistics = `-- name: GetCompanyStatistics :one
+SELECT
+    SUM(total_boletos) AS total_boletos,
+    SUM(total_pagos) AS total_pagos,
+    SUM(valor_emitido) AS valor_emitido,
+    SUM(valor_recebido) AS valor_recebido,
+    SUM(boletos_cancelados) AS boletos_cancelados,
+    SUM(valor_cancelado) AS valor_cancelado,
+    SUM(boletos_atrasados) AS boletos_atrasados,
+    SUM(total_dias_atraso) AS total_dias_atraso
+FROM
+    branchdailystats
+WHERE
+    tenant_id = $1
+    AND date BETWEEN $2 AND $3
+`
+
+type GetCompanyStatisticsParams struct {
+	TenantID string
+	Date     time.Time
+	Date_2   time.Time
+}
+
+type GetCompanyStatisticsRow struct {
+	TotalBoletos      int64
+	TotalPagos        int64
+	ValorEmitido      int64
+	ValorRecebido     int64
+	BoletosCancelados int64
+	ValorCancelado    int64
+	BoletosAtrasados  int64
+	TotalDiasAtraso   int64
+}
+
+func (q *Queries) GetCompanyStatistics(ctx context.Context, arg GetCompanyStatisticsParams) (GetCompanyStatisticsRow, error) {
+	row := q.db.QueryRowContext(ctx, getCompanyStatistics, arg.TenantID, arg.Date, arg.Date_2)
+	var i GetCompanyStatisticsRow
+	err := row.Scan(
+		&i.TotalBoletos,
+		&i.TotalPagos,
+		&i.ValorEmitido,
+		&i.ValorRecebido,
+		&i.BoletosCancelados,
+		&i.ValorCancelado,
+		&i.BoletosAtrasados,
+		&i.TotalDiasAtraso,
+	)
+	return i, err
 }
 
 const getCustomerClassificacaoRisco = `-- name: GetCustomerClassificacaoRisco :many
@@ -1068,12 +1195,12 @@ type UpdateBranchDailyStatsParams struct {
 	Date              time.Time
 	TotalBoletos      sql.NullInt32
 	TotalPagos        sql.NullInt32
-	ValorEmitido      sql.NullString
-	ValorRecebido     sql.NullString
+	ValorEmitido      sql.NullFloat64
+	ValorRecebido     sql.NullFloat64
 	BoletosCancelados sql.NullInt32
-	ValorCancelado    sql.NullString
+	ValorCancelado    sql.NullFloat64
 	BoletosAtrasados  sql.NullInt32
-	TotalDiasAtraso   sql.NullString
+	TotalDiasAtraso   sql.NullFloat64
 }
 
 func (q *Queries) UpdateBranchDailyStats(ctx context.Context, arg UpdateBranchDailyStatsParams) error {
@@ -1129,10 +1256,10 @@ type UpdateCustomerMonthlyStatsParams struct {
 	Month                  time.Time
 	TotalBoletos           sql.NullInt32
 	TotalPagos             sql.NullInt32
-	ValorEmitido           sql.NullString
-	ValorRecebido          sql.NullString
+	ValorEmitido           sql.NullFloat64
+	ValorRecebido          sql.NullFloat64
 	BoletosAtrasados       sql.NullInt32
-	TotalDiasAtraso        sql.NullString
+	TotalDiasAtraso        sql.NullFloat64
 }
 
 func (q *Queries) UpdateCustomerMonthlyStats(ctx context.Context, arg UpdateCustomerMonthlyStatsParams) error {
@@ -1201,9 +1328,9 @@ func (q *Queries) UpdateTransactionStatus(ctx context.Context, arg UpdateTransac
 
 const upsertTransaction = `-- name: UpsertTransaction :one
 INSERT INTO Transaction (
-    id, bank_slip_uuid, status, created_at, updated_at, due_date, total, customer_document_number, tenant_id, branch_id, payment_method
+    bank_slip_uuid, status, created_at, updated_at, due_date, total, customer_document_number, tenant_id, branch_id, payment_method
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
 )
 ON CONFLICT (id) DO UPDATE
 SET
@@ -1220,7 +1347,6 @@ RETURNING id, bank_slip_uuid, status, created_at, updated_at, due_date, total, c
 `
 
 type UpsertTransactionParams struct {
-	ID                     uuid.UUID
 	BankSlipUuid           uuid.NullUUID
 	Status                 NullTransactionStatus
 	CreatedAt              time.Time
@@ -1235,7 +1361,6 @@ type UpsertTransactionParams struct {
 
 func (q *Queries) UpsertTransaction(ctx context.Context, arg UpsertTransactionParams) (Transaction, error) {
 	row := q.db.QueryRowContext(ctx, upsertTransaction,
-		arg.ID,
 		arg.BankSlipUuid,
 		arg.Status,
 		arg.CreatedAt,

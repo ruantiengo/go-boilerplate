@@ -7,9 +7,9 @@
 -- Criação de uma nova transação
 -- name: CreateTransaction :exec
 INSERT INTO Transaction (
-    id, bank_slip_uuid, status, created_at, updated_at, due_date, total, customer_document_number, tenant_id, branch_id, payment_method
+    bank_slip_uuid, status, created_at, updated_at, due_date, total, customer_document_number, tenant_id, branch_id, payment_method
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
 )
 RETURNING *;
 
@@ -41,9 +41,9 @@ SELECT * FROM Transaction;
 
 -- name: UpsertTransaction :one
 INSERT INTO Transaction (
-    id, bank_slip_uuid, status, created_at, updated_at, due_date, total, customer_document_number, tenant_id, branch_id, payment_method
+    bank_slip_uuid, status, created_at, updated_at, due_date, total, customer_document_number, tenant_id, branch_id, payment_method
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
 )
 ON CONFLICT (id) DO UPDATE
 SET
@@ -344,3 +344,38 @@ INSERT INTO CustomerMonthlyStats (
     valor_recebido = CustomerMonthlyStats.valor_recebido + EXCLUDED.valor_recebido,
     boletos_atrasados = CustomerMonthlyStats.boletos_atrasados + EXCLUDED.boletos_atrasados,
     total_dias_atraso = CustomerMonthlyStats.total_dias_atraso + EXCLUDED.total_dias_atraso;
+
+-- name: GetBranchDailyStats :many
+SELECT
+    branch_id,
+    date,
+    total_boletos,
+    total_pagos,
+    valor_emitido,
+    valor_recebido,
+    boletos_cancelados,
+    valor_cancelado,
+    boletos_atrasados,
+    total_dias_atraso
+FROM
+    branchdailystats
+WHERE
+    tenant_id = $1
+    AND branch_id = $2
+    AND date BETWEEN $3 AND $4;
+
+-- name: GetCompanyStatistics :one
+SELECT
+    SUM(total_boletos) AS total_boletos,
+    SUM(total_pagos) AS total_pagos,
+    SUM(valor_emitido) AS valor_emitido,
+    SUM(valor_recebido) AS valor_recebido,
+    SUM(boletos_cancelados) AS boletos_cancelados,
+    SUM(valor_cancelado) AS valor_cancelado,
+    SUM(boletos_atrasados) AS boletos_atrasados,
+    SUM(total_dias_atraso) AS total_dias_atraso
+FROM
+    branchdailystats
+WHERE
+    tenant_id = $1
+    AND date BETWEEN $2 AND $3;

@@ -1,6 +1,10 @@
 package rabbit_config
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/streadway/amqp"
+)
 
 type Queue string
 
@@ -18,14 +22,24 @@ func (m *RabbitMQManager) DeclareQueue(queueName string) error {
 		return fmt.Errorf("failed to get channel: %v", err)
 	}
 
-	_, err = ch.QueueDeclare(
-		queueName, // name
-		true,      // durable
-		false,     // delete when unused
-		false,     // exclusive
-		false,     // no-wait
-		nil,       // arguments
+	err = ch.Qos(
+		150,   // prefetch count
+		0,     // prefetch size
+		false, // global
 	)
+	if err != nil {
+		return fmt.Errorf("failed to set QoS: %v", err)
+	}
+
+	_, err = ch.QueueDeclare(
+		queueName,    // name
+		true,         // durable
+		false,        // delete when unused
+		false,        // exclusive
+		false,        // no-wait
+		amqp.Table{}, // arguments with no ack
+	)
+
 	if err != nil {
 		return fmt.Errorf("failed to declare queue: %v", err)
 	}

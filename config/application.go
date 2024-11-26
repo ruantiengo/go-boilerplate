@@ -43,7 +43,7 @@ func (app *Application) Run() {
 	}
 
 	app.server = server_config.NewServer(app.router)
-	app.server.SetupRoutes()
+	app.server.SetupRoutes(app.db)
 	app.server.Start()
 }
 

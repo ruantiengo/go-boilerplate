@@ -17,10 +17,10 @@ type TransactionConsumer struct {
 	channel            *amqp.Channel
 	queueName          string
 	processTransaction *usecase.ProcessTransaction
-	processStats       *usecase.UpdateStatistics
+	processStats       *usecase.StatisticsService
 }
 
-func NewTransactionConsumer(channel *amqp.Channel, queueName string, processTransaction *usecase.ProcessTransaction, proccessStats *usecase.UpdateStatistics) *TransactionConsumer {
+func NewTransactionConsumer(channel *amqp.Channel, queueName string, processTransaction *usecase.ProcessTransaction, proccessStats *usecase.StatisticsService) *TransactionConsumer {
 	return &TransactionConsumer{
 		channel:            channel,
 		queueName:          queueName,
@@ -33,7 +33,7 @@ func (c *TransactionConsumer) Start() error {
 	msgs, err := c.channel.Consume(
 		c.queueName,
 		"",    // consumer
-		true,  // auto-ack
+		false, // auto-ack
 		false, // exclusive
 		false, // no-local
 		false, // no-wait
@@ -53,7 +53,7 @@ func (c *TransactionConsumer) Start() error {
 }
 
 func (c *TransactionConsumer) processMessage(msg amqp.Delivery) {
-	logger.Message(logger.Info, "Mensagem recebida: %s", msg.Body)
+	logger.Message(logger.Debug, "Mensagem recebida: %s", msg.Body)
 	var transactionDTO TransactionDTO
 	err := json.Unmarshal(msg.Body, &transactionDTO)
 	if err != nil {
@@ -76,6 +76,7 @@ func (c *TransactionConsumer) processMessage(msg amqp.Delivery) {
 		logger.Message(logger.Error, "Erro ao atualizar estatísticas: %v", err)
 		return
 	}
+	msg.Ack(true)
 
 	logger.Message(logger.Info, "Transação processada com sucesso: %s", transaction.BankSlipUuid)
 }
@@ -93,7 +94,6 @@ func (c *TransactionConsumer) incrementStatistics(ctx context.Context, transacti
 		return err
 	}
 
-	err = c.incrementStatistics(ctx, transaction)
 	return err
 }
 

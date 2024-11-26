@@ -32,7 +32,7 @@ func (r *postgresTransactionRepository) Create(ctx context.Context, transaction 
 		CustomerDocumentNumber: transaction.CustomerDocumentNumber,
 		TenantID:               transaction.TenantId,
 		BranchID:               transaction.BranchId,
-		PaymentMethod:          db.NullPaymentMethod{Valid: true, PaymentMethod: db.PaymentMethod(transaction.PaymentMethod)},
+		PaymentMethod:          db.NullPaymentMethod{Valid: transaction.PaymentMethod != "", PaymentMethod: db.PaymentMethod(transaction.PaymentMethod)},
 	}
 
 	_, err := r.queries.CreateTransaction(ctx, params)

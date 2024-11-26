@@ -107,12 +107,12 @@ type Branchdailystat struct {
 	Date              time.Time
 	TotalBoletos      sql.NullInt32
 	TotalPagos        sql.NullInt32
-	ValorEmitido      sql.NullString
-	ValorRecebido     sql.NullString
+	ValorEmitido      sql.NullFloat64
+	ValorRecebido     sql.NullFloat64
 	BoletosCancelados sql.NullInt32
-	ValorCancelado    sql.NullString
+	ValorCancelado    sql.NullFloat64
 	BoletosAtrasados  sql.NullInt32
-	TotalDiasAtraso   sql.NullString
+	TotalDiasAtraso   sql.NullFloat64
 }
 
 type Customermonthlystat struct {
@@ -122,10 +122,10 @@ type Customermonthlystat struct {
 	Month                  time.Time
 	TotalBoletos           sql.NullInt32
 	TotalPagos             sql.NullInt32
-	ValorEmitido           sql.NullString
-	ValorRecebido          sql.NullString
+	ValorEmitido           sql.NullFloat64
+	ValorRecebido          sql.NullFloat64
 	BoletosAtrasados       sql.NullInt32
-	TotalDiasAtraso        sql.NullString
+	TotalDiasAtraso        sql.NullFloat64
 }
 
 type SchemaMigration struct {
